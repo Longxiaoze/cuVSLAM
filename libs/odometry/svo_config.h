@@ -21,6 +21,7 @@
 #include <string>
 
 #include "common/imu_calibration.h"
+#include "pipelines/tracker_state_machine.h"
 #include "sba/sba_config.h"
 #include "sof/sof_config.h"
 
@@ -39,6 +40,8 @@ struct KeyFrameSettings {
 struct TrackPerFrameSettings {
   sof::Settings sof;
   KeyFrameSettings kf;
+  sba::Settings sba;
+  pipelines::StateMachineSettings sm;
   // TODO[Zheng]: Future per-frame settings (PnP, ICP, RANSAC, …) go here as additional fields.
 };
 
@@ -47,6 +50,7 @@ struct Settings {
   sof::Settings sof_settings;
   cuvslam::imu::ImuCalibration imu_calibration;
   KeyFrameSettings kf_settings;
+  pipelines::StateMachineSettings sm_settings;
   bool verbose = false;
   bool use_prediction = true;
 };

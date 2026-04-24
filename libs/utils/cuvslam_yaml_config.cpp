@@ -177,4 +177,22 @@ bool LoadSlamConfigFromFile(const char* filepath, Slam::Config& config) {
   return true;
 }
 
+bool LoadExpertParamsFromFile(const char* filepath, std::map<std::string, std::string>& params) {
+  YAML::Node root = LoadYamlRootMap(filepath);
+  YAML::Node node = root["expert_params"];
+  if (!node || !node.IsMap()) {
+    return false;
+  }
+  bool any_written = false;
+  for (const auto& entry : node) {
+    const std::string key = entry.first.as<std::string>();
+    // CLI-flag entries already in params take precedence — do not overwrite them.
+    if (params.find(key) == params.end()) {
+      params[key] = entry.second.as<std::string>();
+      any_written = true;
+    }
+  }
+  return any_written;
+}
+
 }  // namespace cuvslam

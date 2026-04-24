@@ -24,11 +24,21 @@
 #include "common/isometry.h"
 #include "common/vector_2t.h"
 #include "common/vector_3t.h"
+#include "pipelines/tracker_state_machine.h"
+#include "sba/sba_config.h"
 #include "sof/sof_multicamera_interface.h"
 
 namespace cuvslam::pipelines {
 
 using MulticamObservations = std::unordered_map<CameraId, std::vector<camera::Observation>>;
+
+// Solver-level per-frame settings. Contains the subset of per-frame overrides
+// that are consumed inside solveNextFrame. Extend this struct (rather than
+// adding more parameters to solveNextFrame) when new solver-level knobs are needed.
+struct SolverPerFrameSettings {
+  sba::Settings sba;
+  StateMachineSettings sm;
+};
 
 class ISFMSolver {
 public:
@@ -46,8 +56,8 @@ public:
   // return true if accurate solution was found
   virtual bool solveNextFrame(int64_t time_ns, const sof::FrameState& frameState,
                               const MulticamObservations& observations, Isometry3T& world_from_rig,
-                              Matrix6T& static_info_exp, std::vector<Track2D>* tracks2d = nullptr,
-                              Tracks3DMap* tracks3d = nullptr) = 0;
+                              Matrix6T& static_info_exp, const SolverPerFrameSettings& solver_settings,
+                              std::vector<Track2D>* tracks2d = nullptr, Tracks3DMap* tracks3d = nullptr) = 0;
 
   virtual void reset() = 0;
 };

@@ -68,7 +68,8 @@ void SolverSfMMulti::reset() {
 
 bool SolverSfMMulti::solveNextFrame(int64_t time_ns, const sof::FrameState& frameState,
                                     const MulticamObservations& observations, Isometry3T& world_from_rig,
-                                    Matrix6T& static_info_exp, std::vector<Track2D>* tracks2d, Tracks3DMap* tracks3d) {
+                                    Matrix6T& static_info_exp, const SolverPerFrameSettings& solver_settings,
+                                    std::vector<Track2D>* tracks2d, Tracks3DMap* tracks3d) {
   TRACE_EVENT ev = profiler_domain_.trace_event("SolverSfMMulti::solveNextFrame()", profiler_color_);
 
   // let keep this as a single place of using prev_...
@@ -116,7 +117,7 @@ bool SolverSfMMulti::solveNextFrame(int64_t time_ns, const sof::FrameState& fram
     map_.add_keyframe(time_ns, {rig_from_w}, {},  // preintegration
                       obs_vector, tr_landmarks);
     if (sba_service_) {
-      sba_service_->notify();
+      static_cast<SbaServiceBase*>(sba_service_.get())->trigger(solver_settings.sba);
     }
   } else {
     std::unordered_map<TrackId, Vector3T> landmarks = map_.get_recent_landmarks();

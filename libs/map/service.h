@@ -45,18 +45,22 @@ public:
 
 protected:
   void stop();
+
+  // Called with mutex held, just before the lock is released for service_task().
+  // Derived classes override this to snapshot any pending per-task state into
+  // fields that service_task() will read without holding the lock.
+  virtual void on_task_start() {}
+
   UnifiedMap& map_;
+  const bool async_ = true;
+  bool inputs_ready_ = false;
+  bool stop_ = false;
+  std::mutex mutex_;
+  std::condition_variable cv_;
 
 private:
   void run();
-  const bool async_ = true;
-
-  bool inputs_ready_ = false;
-  bool stop_ = false;
-
   std::thread job_;
-  std::mutex mutex_;
-  std::condition_variable cv_;
 };
 
 }  // namespace cuvslam::map

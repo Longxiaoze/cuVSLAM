@@ -17,6 +17,7 @@
 #pragma once
 
 #include <array>
+#include <cstddef>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -673,6 +674,38 @@ public:
    * @return Vector of primary camera indices
    */
   const std::vector<uint8_t>& GetPrimaryCameras() const;
+
+  /**
+   * @brief Apply expert parameters by string key/value pairs.
+   *
+   * Allows setting internal runtime settings by name. Unknown keys log a warning and are ignored.
+   * Invalid values or keys not applicable to the current odometry mode throw std::invalid_argument.
+   *
+   * Please use this API with caution!
+   *
+   * Supported keys (grouped by prefix):
+   *
+   * SBA (all modes):
+   *   `sba.num_sba_frames`, `sba.num_inertial_sba_frames`, `sba.num_fixed_sba_frames`,
+   *   `sba.num_sba_iterations`, `sba.robustifier_scale`, `sba.use_sba_winsorizer`
+   *
+   * Note: `sba.async` and `sba.mode` are construction-time settings that determine whether the
+   * SBA background thread is spawned and which bundler is used. They cannot be changed after the
+   * tracker is created. Set `Configuration::async_sba` and `Configuration::odometry_mode` before
+   * constructing the Odometry object instead.
+   *
+   * StateMachine / IMU gravity estimation (Inertial mode only):
+   *   `sm.gravity_update_period_ns`, `sm.max_integration_time_ns`, `sm.min_num_kf_for_gravity`,
+   *   `sm.min_time_period_ns`, `sm.max_time_period_ns`
+   *
+   * @param[in] parameters Pointer to an array of key/value pairs to apply.
+   * @param[in] count      Number of entries in @p parameters.
+   */
+  struct ExpertParameter {
+    std::string_view key;
+    std::string_view value;
+  };
+  void ApplyExpertParameters(const ExpertParameter* parameters, std::size_t count);
 
 private:
   class Impl;

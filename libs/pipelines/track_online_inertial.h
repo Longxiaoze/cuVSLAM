@@ -60,8 +60,8 @@ public:
   // @see base class for comment
   virtual bool solveNextFrame(int64_t time_ns, const sof::FrameState& frameState,
                               const MulticamObservations& observations, Isometry3T& world_from_rig,
-                              Matrix6T& static_info_exp, std::vector<Track2D>* tracks2d = nullptr,
-                              Tracks3DMap* tracks3d = nullptr) override;
+                              Matrix6T& static_info_exp, const SolverPerFrameSettings& solver_settings,
+                              std::vector<Track2D>* tracks2d = nullptr, Tracks3DMap* tracks3d = nullptr) override;
 
   void add_imu_measurement(const imu::ImuMeasurement& m);
   void set_verbose(bool verbose);

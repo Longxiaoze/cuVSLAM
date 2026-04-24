@@ -49,7 +49,7 @@ You can specify optional per-frame `track_options` using a YAML config file with
 
 Command-line flags will override values from the config file. See `api_config.yaml` for an example configuration with all supported options.
 
-**Note:** This launcher links the **`utils`** static library, which reads YAML and populates `TrackOptions`, `Odometry::Config`, and `Slam::Config` structs directly. Python users can do the same via `cuvslam.utils.load_track_options_from_file`.
+**Note:** This launcher links the **`utils`** static library, which reads YAML and populates `Odometry::TrackOptions`, `Odometry::Config`, and `Slam::Config` structs directly. Python users can do the same via `cuvslam.utils.load_track_options_from_file`.
 
 ### Config File Structure
 

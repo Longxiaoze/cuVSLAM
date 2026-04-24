@@ -634,7 +634,43 @@ NB_MODULE(pycuvslam, m) {
           "get_primary_cameras", [](const Odometry& self) -> std::vector<uint8_t> { return self.GetPrimaryCameras(); },
           "Returns a list of primary cameras.\n\n"
           "Primary cameras are the ones where observations are always present.\n"
-          "The list is required to initialize Slam.");
+          "The list is required to initialize Slam.")
+      .def(
+          "apply_expert_parameters",
+          [](Odometry& self, const nb::dict& parameters) {
+            std::vector<Odometry::ExpertParameter> params;
+            params.reserve(parameters.size());
+            // Materialise strings so string_views remain valid for the duration of the call.
+            std::vector<std::string> keys, values;
+            keys.reserve(parameters.size());
+            values.reserve(parameters.size());
+            for (auto [k, v] : parameters) {
+              keys.push_back(nb::cast<std::string>(k));
+              values.push_back(nb::cast<std::string>(v));
+              params.push_back({keys.back(), values.back()});
+            }
+            self.ApplyExpertParameters(params.data(), params.size());
+          },
+          nb::arg("parameters"),
+          "Apply expert parameters by string key/value pairs.\n\n"
+          "Allows tuning internal runtime settings after tracker creation. Unknown keys log a\n"
+          "warning and are ignored. Invalid values raise RuntimeError.\n\n"
+          "Supported keys:\n\n"
+          "  SBA (all modes):\n"
+          "    ``sba.num_sba_frames``, ``sba.num_inertial_sba_frames``, ``sba.num_fixed_sba_frames``,\n"
+          "    ``sba.num_sba_iterations``, ``sba.robustifier_scale``, ``sba.use_sba_winsorizer``\n\n"
+          "  StateMachine / IMU gravity (Inertial mode only):\n"
+          "    ``sm.gravity_update_period_ns``, ``sm.max_integration_time_ns``,\n"
+          "    ``sm.min_num_kf_for_gravity``, ``sm.min_time_period_ns``, ``sm.max_time_period_ns``\n\n"
+          "Note: ``sba.async`` and ``sba.mode`` are construction-time only; set them in\n"
+          ":class:`Odometry.Config` before creating the tracker.\n\n"
+          "Example::\n\n"
+          "    odometry.apply_expert_parameters({\n"
+          "        'sba.num_sba_frames': '5',\n"
+          "        'sba.robustifier_scale': '0.3',\n"
+          "    })\n\n"
+          "Args:\n"
+          "    parameters (dict[str, str]): Map of key/value string pairs to apply.");
 
   // Slam class must be defined before its nested enums/classes are bound to it.
   auto slam_cls = nb::class_<Slam>(m, "Slam", "Simultaneous Localization and Mapping (SLAM)");

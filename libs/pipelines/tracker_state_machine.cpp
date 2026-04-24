@@ -21,8 +21,6 @@
 
 namespace cuvslam::pipelines {
 
-StateMachine::StateMachine(const StateMachineSettings& s) : s_(s) {}
-
 void StateMachine::register_gravity_estimation_callback(const std::function<bool(size_t num_kfs)>& cb) {
   gravity_calculate_callback_ = cb;
 }
@@ -35,10 +33,11 @@ void StateMachine::reset() {
   state_ = Uninitialized;
 }
 
-StateMachine::State StateMachine::update_frame_state(bool is_keyframe, bool track_result, int64_t ts_ns) {
+StateMachine::State StateMachine::update_frame_state(bool is_keyframe, bool track_result, int64_t ts_ns,
+                                                     const StateMachineSettings& s) {
   if (is_keyframe) {
     keyframe_timeline_.push_back(ts_ns);
-    while (keyframe_timeline_.back() - keyframe_timeline_.front() > s_.max_time_period_ns) {
+    while (keyframe_timeline_.back() - keyframe_timeline_.front() > s.max_time_period_ns) {
       keyframe_timeline_.pop_front();
     }
   }
@@ -49,19 +48,19 @@ StateMachine::State StateMachine::update_frame_state(bool is_keyframe, bool trac
     keyframe_timeline_.clear();
   }
 
-  if (ts_ns - last_successfull_frame_time_ns > s_.max_integration_time_ns) {
+  if (ts_ns - last_successfull_frame_time_ns > s.max_integration_time_ns) {
     reset();
     return state_;
   }
 
-  if (keyframe_timeline_.size() >= s_.min_num_kf_for_gravity &&    // we have enough good keyframes in the map
-      ts_ns - *keyframe_timeline_.begin() > s_.min_time_period_ns  // the success timeline is long enough
+  if (keyframe_timeline_.size() >= s.min_num_kf_for_gravity &&    // we have enough good keyframes in the map
+      ts_ns - *keyframe_timeline_.begin() > s.min_time_period_ns  // the success timeline is long enough
   ) {
     if (state_ == Ok) {
       // check enough time has passed since last gravity optimization
-      if (ts_ns - last_gravity_estimation_time_ns > s_.gravity_update_period_ns) {
+      if (ts_ns - last_gravity_estimation_time_ns > s.gravity_update_period_ns) {
         // optimize
-        bool res = gravity_calculate_callback_(s_.min_num_kf_for_gravity);
+        bool res = gravity_calculate_callback_(s.min_num_kf_for_gravity);
         if (!res) {
           reset();
           return Uninitialized;
@@ -73,7 +72,7 @@ StateMachine::State StateMachine::update_frame_state(bool is_keyframe, bool trac
 
     } else {
       // optimize
-      bool res = gravity_calculate_callback_(s_.min_num_kf_for_gravity);
+      bool res = gravity_calculate_callback_(s.min_num_kf_for_gravity);
       if (!res) {
         reset();
         return Uninitialized;

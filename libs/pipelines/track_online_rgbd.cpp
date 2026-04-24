@@ -68,7 +68,8 @@ void SolverSfMRGBD::reset() {
 
 bool SolverSfMRGBD::solveNextFrame(int64_t time_ns, const sof::FrameState& frameState, const SFMInputs& inputs,
                                    Isometry3T& world_from_rig, Matrix6T& static_info_exp,
-                                   std::vector<Track2D>* tracks2d, Tracks3DMap* tracks3d) {
+                                   const SolverPerFrameSettings& solver_settings, std::vector<Track2D>* tracks2d,
+                                   Tracks3DMap* tracks3d) {
   TRACE_EVENT ev = profiler_domain_.trace_event("SolverSfMRGBD::solveNextFrame()", profiler_color_);
 
   // TODO: refactor the code to use std::vector<std::reference_wrapper>
@@ -122,7 +123,7 @@ bool SolverSfMRGBD::solveNextFrame(int64_t time_ns, const sof::FrameState& frame
     map_.add_keyframe(time_ns, {prev_rig_from_world_}, {},  // preintegration
                       obs_vector, tr_landmarks);
     if (sba_service_) {
-      sba_service_->notify();
+      static_cast<SbaServiceBase*>(sba_service_.get())->trigger(solver_settings.sba);
     }
   }
 

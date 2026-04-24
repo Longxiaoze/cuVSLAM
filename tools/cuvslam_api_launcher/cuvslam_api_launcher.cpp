@@ -111,6 +111,21 @@ DEFINE_int32(cfg_depth_camera, 0, "Depth camera index");
 DEFINE_double(cfg_depth_scale_factor, kDefaultOdomCfg.rgbd_settings.depth_scale_factor, "Depth scale factor");
 DEFINE_bool(cfg_enable_depth_stereo_tracking, kDefaultOdomCfg.rgbd_settings.enable_depth_stereo_tracking,
             "Enable depth stereo tracking");
+// Expert SBA parameters — applied via ApplyExpertParameters() after tracker creation.
+// Only flags explicitly set on the command line are forwarded; unset flags keep the
+// library default.  mode and async are construction-time only and belong in cfg_* above.
+DEFINE_int32(expert_sba_num_frames, 7,
+             "sba.num_sba_frames: number of recent keyframes used in regular SBA (default: 7)");
+DEFINE_int32(expert_sba_num_inertial_frames, 10,
+             "sba.num_inertial_sba_frames: number of keyframes used in inertial SBA (default: 10)");
+DEFINE_int32(expert_sba_num_fixed_frames, 3,
+             "sba.num_fixed_sba_frames: number of fixed (anchor) keyframes in regular SBA (default: 3)");
+DEFINE_int32(expert_sba_num_iterations, 7,
+             "sba.num_sba_iterations: maximum solver iterations per SBA run (default: 7)");
+DEFINE_double(expert_sba_robustifier_scale, 0.5,
+              "sba.robustifier_scale: Huber robustifier scale for SBA reprojection residuals (default: 0.5)");
+DEFINE_bool(expert_sba_use_winsorizer, false,
+            "sba.use_sba_winsorizer: run a second SBA pass after winsorizing reprojection outliers (default: false)");
 
 #define VERIFY_TRACE(condition, ...) \
   if (!(condition)) {                \
@@ -301,7 +316,8 @@ Rig createRig(const edex::EdexFile& edex_file, const camera_rig_edex::ICameraRig
 }
 
 bool trackEdexDataSet(const std::string& data_folder, const Odometry::Config& odom_cfg, const Slam::Config& slam_cfg,
-                      const Odometry::TrackOptions& track_options, const std::string& input_map_name,
+                      const Odometry::TrackOptions& track_options,
+                      const std::map<std::string, std::string>& expert_params, const std::string& input_map_name,
                       const std::string& output_map_name) {
   std::vector<CameraId> camera_ids{StringToIntVector<CameraId>(FLAGS_cameras, ',')};
   std::string edex_name{std::filesystem::path{data_folder} / "stereo.edex"};
@@ -323,6 +339,14 @@ bool trackEdexDataSet(const std::string& data_folder, const Odometry::Config& od
   WarmUpGPU();
   Rig rig = createRig(edex_file, edex_rig.get());
   std::unique_ptr<Odometry> odom = std::make_unique<Odometry>(rig, odom_cfg);
+  if (!expert_params.empty()) {
+    std::vector<Odometry::ExpertParameter> params;
+    params.reserve(expert_params.size());
+    for (const auto& [k, v] : expert_params) {
+      params.push_back({k, v});
+    }
+    odom->ApplyExpertParameters(params.data(), params.size());
+  }
   TraceMessage("Odometry tracker created");
 
   std::unique_ptr<Slam> slam;
@@ -533,6 +557,7 @@ int main(int arg_c, char** arg_v) {
   Odometry::TrackOptions track_options;
 
   // Load configs from YAML file if specified (command-line flags applied afterwards take precedence)
+  std::map<std::string, std::string> expert_params;
   if (!FLAGS_config.empty()) {
     std::cout << "Loading config from: " << FLAGS_config << std::endl;
     try {
@@ -545,6 +570,9 @@ int main(int arg_c, char** arg_v) {
       }
       if (LoadTrackOptionsFromFile(config_path, track_options)) {
         std::cout << "Loaded per-frame track_options from file." << std::endl;
+      }
+      if (LoadExpertParamsFromFile(config_path, expert_params)) {
+        std::cout << "Loaded expert_params from file." << std::endl;
       }
     } catch (const std::exception& e) {
       TraceError("Failed to load config file: %s\n", e.what());
@@ -617,6 +645,22 @@ int main(int arg_c, char** arg_v) {
   if (flag_is_set("cfg_slam_max_map_size")) slam_cfg.max_map_size = FLAGS_cfg_slam_max_map_size;
   if (flag_is_set("cfg_planar")) slam_cfg.planar_constraints = FLAGS_cfg_planar;
 
-  return trackEdexDataSet(FLAGS_dataset, odom_cfg, slam_cfg, track_options, FLAGS_loc_input_map, FLAGS_output_map) ? 0
-                                                                                                                   : 1;
+  // Apply explicitly-set CLI flags into expert_params, overriding any YAML values.
+  if (flag_is_set("expert_sba_num_frames"))
+    expert_params["sba.num_sba_frames"] = std::to_string(FLAGS_expert_sba_num_frames);
+  if (flag_is_set("expert_sba_num_inertial_frames"))
+    expert_params["sba.num_inertial_sba_frames"] = std::to_string(FLAGS_expert_sba_num_inertial_frames);
+  if (flag_is_set("expert_sba_num_fixed_frames"))
+    expert_params["sba.num_fixed_sba_frames"] = std::to_string(FLAGS_expert_sba_num_fixed_frames);
+  if (flag_is_set("expert_sba_num_iterations"))
+    expert_params["sba.num_sba_iterations"] = std::to_string(FLAGS_expert_sba_num_iterations);
+  if (flag_is_set("expert_sba_robustifier_scale"))
+    expert_params["sba.robustifier_scale"] = std::to_string(FLAGS_expert_sba_robustifier_scale);
+  if (flag_is_set("expert_sba_use_winsorizer"))
+    expert_params["sba.use_sba_winsorizer"] = FLAGS_expert_sba_use_winsorizer ? "true" : "false";
+
+  return trackEdexDataSet(FLAGS_dataset, odom_cfg, slam_cfg, track_options, expert_params, FLAGS_loc_input_map,
+                          FLAGS_output_map)
+             ? 0
+             : 1;
 }

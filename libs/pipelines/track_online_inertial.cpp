@@ -483,8 +483,8 @@ bool check_imu_drops(sba_imu::IMUPreintegration& preint, const imu::ImuCalibrati
 
 bool SolverSfMInertial::solveNextFrame(int64_t time_ns, const sof::FrameState& frameState,
                                        const MulticamObservations& observations, Isometry3T& world_from_rig,
-                                       Matrix6T& static_info_exp, std::vector<Track2D>* tracks2d,
-                                       Tracks3DMap* tracks3d) {
+                                       Matrix6T& static_info_exp, const SolverPerFrameSettings& solver_settings,
+                                       std::vector<Track2D>* tracks2d, Tracks3DMap* tracks3d) {
   TRACE_EVENT ev = profiler_domain_.trace_event("solveNextFrame()");
 
   const Isometry3T& rig_from_imu = calib_.rig_from_imu();
@@ -599,8 +599,8 @@ bool SolverSfMInertial::solveNextFrame(int64_t time_ns, const sof::FrameState& f
   {
     TRACE_EVENT ev2 = profiler_domain_.trace_event("update_frame_state");
     bool is_keyframe = frameState == sof::FrameState::Key;
-    imu_sm_.update_frame_state(is_keyframe, pnp_result && no_drops,
-                               time_ns);  // estimates gravity and biases through callback
+    imu_sm_.update_frame_state(is_keyframe, pnp_result && no_drops, time_ns,
+                               solver_settings.sm);  // estimates gravity and biases through callback
   }
 
   if (pnp_result && imu_state == StateMachine::State::Ok) {
@@ -684,7 +684,7 @@ bool SolverSfMInertial::solveNextFrame(int64_t time_ns, const sof::FrameState& f
                       last_kf_preint,  // preintegration
                       obs_vector, tr_landmarks);
     if (sba_service_) {
-      sba_service_->notify();
+      static_cast<SbaServiceBase*>(sba_service_.get())->trigger(solver_settings.sba);
     }
     if (!lost) {
       last_kf_preint = sba_imu::IMUPreintegration(prev_pose.gyro_bias, prev_pose.acc_bias);

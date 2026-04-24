@@ -22,6 +22,7 @@
 #include "common/vector_3t.h"
 #include "pipelines/sfm_solver_interface.h"
 #include "pipelines/track_online_inertial.h"
+#include "pipelines/tracker_state_machine.h"
 
 #include "odometry/ipredictor.h"
 #include "odometry/multi_visual_odometry_base.h"

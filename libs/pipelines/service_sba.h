@@ -38,6 +38,40 @@ using namespace cuvslam::map;
 
 int CalcNumFixedKeyframes(size_t map_size, size_t numFixedKeyFrames);
 
+// Non-template base for SBA services that need per-call settings updates.
+// Provides a thread-safe pending/current split so that settings written by the
+// main thread (via trigger()) are snapshotted under the mutex before the async
+// service_task() reads them — eliminating the data race on sba_settings_.
+class SbaServiceBase : public ServiceBase {
+public:
+  using ServiceBase::ServiceBase;
+
+  // Atomically records sba_settings for the next task run and wakes the worker.
+  // In synchronous mode, snapshots and runs the task inline.
+  void trigger(const sba::Settings& s) {
+    if (!async_) {
+      pending_ = s;
+      on_task_start();
+      service_task();
+      return;
+    }
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      pending_ = s;
+      inputs_ready_ = true;
+    }
+    cv_.notify_one();
+  }
+
+protected:
+  // Called under the mutex just before service_task() starts; copies pending
+  // settings into current_ so service_task() never races with trigger().
+  void on_task_start() override { current_ = pending_; }
+
+  sba::Settings pending_;  // written by trigger() under mutex
+  sba::Settings current_;  // snapshotted by on_task_start(); read-only in service_task()
+};
+
 namespace {
 template <class Bundler>
 void run_sba(const UnifiedMap::SubMap& recent_map, const camera::Rig& rig, const sba::Settings& sba_settings,
@@ -264,24 +298,27 @@ void run_imu_sba(const UnifiedMap::SubMap& recent_map, const Vector3T& gravity, 
 using namespace cuvslam::map;
 
 template <class Bundler>
-class SbaService : public ServiceBase {
+class SbaService : public SbaServiceBase {
 public:
   SbaService(const sba::Settings& sba_settings, const camera::Rig& rig, UnifiedMap& map)
-      : ServiceBase(map, sba_settings.async), rig_(rig), sba_settings_(sba_settings) {}
+      : SbaServiceBase(map, sba_settings.async), rig_(rig) {
+    pending_ = sba_settings;
+    current_ = sba_settings;
+  }
 
   virtual void service_task() final {
     TRACE_EVENT ev = profiler_domain_.trace_event("service_task");
 
     TRACE_EVENT id1 = profiler_domain_.trace_event_start("get_recent_submap");
-    auto recent_map = map_.get_recent_submap(sba_settings_.num_sba_frames, true);
+    auto recent_map = map_.get_recent_submap(current_.num_sba_frames, true);
     profiler_domain_.trace_event_end(id1);
 
     // first run
     {
       TRACE_EVENT ev1 = profiler_domain_.trace_event("run_sba");
-      run_sba(recent_map, rig_, sba_settings_, bundler_);
+      run_sba(recent_map, rig_, current_, bundler_);
     }
-    if (sba_settings_.use_sba_winsorizer) {
+    if (current_.use_sba_winsorizer) {
       KeyframePtr last_kf = recent_map.consecutive_keyframes.back().keyframe;
       auto& last_landmarks = recent_map.landmark_and_obs.back();
       std::vector<KeyframeLandmarkObs> observations;
@@ -297,7 +334,7 @@ public:
       winsorize(rig_, observations);
 
       // second run
-      run_sba(recent_map, rig_, sba_settings_, bundler_);
+      run_sba(recent_map, rig_, current_, bundler_);
     }
   }
 
@@ -305,7 +342,6 @@ public:
 
 private:
   camera::Rig rig_;
-  sba::Settings sba_settings_;
   Bundler bundler_;
   profiler::SBAProfiler::DomainHelper profiler_domain_ = profiler::SBAProfiler::DomainHelper("SBA Service");
 };
@@ -313,30 +349,29 @@ private:
 using CpuSbaService = SbaService<sba::SchurComplementBundlerCpu>;
 
 template <class RegularBundler, class ImuBundler>
-class ImuSbaService : public ServiceBase {
+class ImuSbaService : public SbaServiceBase {
 public:
   ImuSbaService(const sba::Settings& sba_settings, const camera::Rig& rig, const imu::ImuCalibration& calib,
                 UnifiedMap& map)
-      : ServiceBase(map, sba_settings.async),
-        rig_(rig),
-        calib_(calib),
-        sba_settings_(sba_settings),
-        imu_bundler_(calib){};
+      : SbaServiceBase(map, sba_settings.async), rig_(rig), calib_(calib), imu_bundler_(calib) {
+    pending_ = sba_settings;
+    current_ = sba_settings;
+  }
 
   virtual void service_task() final {
     TRACE_EVENT ev = profiler_domain_.trace_event("service_task");
 
-    auto recent_map = map_.get_recent_submap(sba_settings_.num_inertial_sba_frames);
+    auto recent_map = map_.get_recent_submap(current_.num_inertial_sba_frames);
     const std::optional<Vector3T> gravity = map_.get_gravity();
 
     // first run
     if (gravity) {
       TRACE_EVENT ev1 = profiler_domain_.trace_event("run_imu_sba");
-      run_imu_sba(recent_map, *gravity, rig_, calib_, sba_settings_, imu_bundler_);
+      run_imu_sba(recent_map, *gravity, rig_, calib_, current_, imu_bundler_);
       TraceDebug("IMU SBA has finished");
     } else {
       TRACE_EVENT ev1 = profiler_domain_.trace_event("run_sba");
-      run_sba(recent_map, rig_, sba_settings_, bundler_);
+      run_sba(recent_map, rig_, current_, bundler_);
       TraceDebug("Regular SBA has finished");
     }
   }
@@ -346,7 +381,6 @@ public:
 private:
   camera::Rig rig_;
   imu::ImuCalibration calib_;
-  sba::Settings sba_settings_;
   RegularBundler bundler_;
   ImuBundler imu_bundler_;
   profiler::SBAProfiler::DomainHelper profiler_domain_ = profiler::SBAProfiler::DomainHelper("Inertial SBA Service");

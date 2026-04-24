@@ -41,9 +41,11 @@ public:
   enum State { Ok, Uninitialized };
 
 public:
-  StateMachine(const StateMachineSettings& s = StateMachineSettings());
+  StateMachine() = default;
 
-  State update_frame_state(bool is_keyframe, bool track_result, int64_t ts_ns);
+  // Settings are passed per-call so they always reflect the latest values from
+  // ApplyExpertParameters without requiring a getter/setter on a live object.
+  State update_frame_state(bool is_keyframe, bool track_result, int64_t ts_ns, const StateMachineSettings& s);
 
   void register_gravity_estimation_callback(const std::function<bool(size_t num_kfs)>& cb);
   const State& get_state() const;
@@ -65,7 +67,6 @@ private:
   std::function<bool(size_t num_kfs)> gravity_calculate_callback_ = nullptr;
 
   State state_ = Uninitialized;
-  StateMachineSettings s_;
 };
 
 }  // namespace cuvslam::pipelines

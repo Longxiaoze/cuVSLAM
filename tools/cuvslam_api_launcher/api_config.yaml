@@ -98,7 +98,7 @@ slam:
   throttling_time_ms: 0
 
 # =============================================================================
-# Per-frame Track Options (cuvslam::TrackOptions), optional
+# Per-frame Track Options (Odometry::TrackOptions), optional
 # =============================================================================
 # Applied on every Odometry::Track() call; unset keys use TrackOptions defaults.
 # See src/examples/kitti/kitti_config.yaml for a fuller example.
@@ -106,3 +106,19 @@ slam:
 track_options:
   num_desired_tracks: 450
   kf_survivor_from_last: 41
+
+# =============================================================================
+# Expert SBA Parameters (ApplyExpertParameters), optional
+# =============================================================================
+# Applied once after tracker creation via ApplyExpertParameters().
+# All values are forwarded as strings exactly as the API expects.
+# Command-line --expert_sba_* flags override these values.
+# mode and async are construction-time only; set them under odometry: above.
+#
+expert_params:
+  sba.num_sba_frames: 7          # number of recent keyframes for regular SBA
+  sba.num_inertial_sba_frames: 10 # number of keyframes for inertial SBA
+  sba.num_fixed_sba_frames: 3    # fixed (anchor) keyframes in regular SBA
+  sba.num_sba_iterations: 7      # maximum solver iterations per SBA run
+  sba.robustifier_scale: 0.5     # Huber robustifier scale for reprojection residuals
+  sba.use_sba_winsorizer: false  # second SBA pass with winsorized outliers

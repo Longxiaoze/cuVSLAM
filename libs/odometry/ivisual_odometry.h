@@ -23,6 +23,7 @@
 #include "common/types.h"
 #include "common/vector_2t.h"
 #include "common/vector_3t.h"
+#include "pipelines/tracker_state_machine.h"
 #include "sof/image_context.h"
 
 #include "odometry/ipredictor.h"

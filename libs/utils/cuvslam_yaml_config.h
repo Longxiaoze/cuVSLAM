@@ -15,6 +15,9 @@
 
 #pragma once
 
+#include <map>
+#include <string>
+
 #include "cuvslam/cuvslam2.h"
 
 namespace cuvslam {
@@ -48,5 +51,18 @@ bool LoadOdometryConfigFromFile(const char* filepath, Odometry::Config& config);
 /// @return true if the `slam` section was found and applied, false if the section is absent.
 /// @throws std::runtime_error if the file cannot be opened or parsed.
 bool LoadSlamConfigFromFile(const char* filepath, Slam::Config& config);
+
+/// @brief Load expert parameters from the `expert_params:` section of a YAML file.
+///
+/// Every key–value pair under `expert_params` is inserted into @p params as a string,
+/// exactly as `ApplyExpertParameters` expects.  Any key already present in @p params is
+/// left untouched, so CLI-flag overrides set before this call are preserved.
+///
+/// @param filepath Path to the YAML file.
+/// @param params   Output map to populate (existing entries are NOT overwritten).
+/// @return true if the `expert_params` section was found and at least one entry written,
+///         false if the section is absent.
+/// @throws std::runtime_error if the file cannot be opened or parsed.
+bool LoadExpertParamsFromFile(const char* filepath, std::map<std::string, std::string>& params);
 
 }  // namespace cuvslam

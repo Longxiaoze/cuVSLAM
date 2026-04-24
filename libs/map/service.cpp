@@ -76,12 +76,16 @@ void ServiceBase::run() {
       if (stop_) {
         return;
       }
-    }
+
+      // Clear the flag *before* releasing the lock.  Any trigger() call that
+      // arrives while service_task() is running (lock not held) will set
+      // inputs_ready_ = true again, so the loop will re-enter service_task()
+      // for that keyframe rather than silently dropping it.
+      inputs_ready_ = false;
+      on_task_start();  // snapshot pending state while lock is held
+    }                   // lock released before service_task()
 
     service_task();
-
-    std::unique_lock<std::mutex> lock(mutex_);
-    inputs_ready_ = false;
   }
 };
 

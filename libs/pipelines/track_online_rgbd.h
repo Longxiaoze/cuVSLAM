@@ -51,7 +51,8 @@ public:
 
   // @see base class for comment
   bool solveNextFrame(int64_t time_ns, const sof::FrameState& frameState, const SFMInputs& inputs,
-                      Isometry3T& world_from_rig, Matrix6T& static_info_exp, std::vector<Track2D>* tracks2d = nullptr,
+                      Isometry3T& world_from_rig, Matrix6T& static_info_exp,
+                      const SolverPerFrameSettings& solver_settings, std::vector<Track2D>* tracks2d = nullptr,
                       Tracks3DMap* tracks3d = nullptr);
 
   void reset();
