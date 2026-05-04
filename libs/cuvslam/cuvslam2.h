@@ -676,6 +676,15 @@ public:
   const std::vector<uint8_t>& GetPrimaryCameras() const;
 
   /**
+   * @brief Key/value pair for ApplyExpertParameters.
+   * @see ApplyExpertParameters for the list of supported keys.
+   */
+  struct ExpertParameter {
+    std::string_view key;    ///< Parameter name (e.g. `sba.num_sba_iterations`).
+    std::string_view value;  ///< Parameter value as a string.
+  };
+
+  /**
    * @brief Apply expert parameters by string key/value pairs.
    *
    * Allows setting internal runtime settings by name. Unknown keys log a warning and are ignored.
@@ -701,10 +710,6 @@ public:
    * @param[in] parameters Pointer to an array of key/value pairs to apply.
    * @param[in] count      Number of entries in @p parameters.
    */
-  struct ExpertParameter {
-    std::string_view key;
-    std::string_view value;
-  };
   void ApplyExpertParameters(const ExpertParameter* parameters, std::size_t count);
 
 private:
