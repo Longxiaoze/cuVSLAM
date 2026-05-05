@@ -17,6 +17,7 @@
 
 #include <memory>
 
+#include "common/isometry_utils.h"
 #include "sof/internal/sof_multicamera_gpu.h"
 #include "sof/sof_create.h"
 
@@ -72,7 +73,12 @@ void MultiSOFGPU::LaunchTrackingPrimaryToSecondary(CameraId primary_id, CameraId
   GPUArrayPinned<TrackData>& tracks_data = tracker.tracks_data;
   Stream& stream = tracker.stream;
 
-  const Vector2T offset = intrinsicsS.getPrincipal() - intrinsicsP.getPrincipal();
+  const Isometry3T secondary_from_primary =
+      rig_.camera_from_rig[secondary_id] * rig_.camera_from_rig[primary_id].inverse();
+
+  const float baseline = secondary_from_primary.translation().norm();
+  const float avg_focal = 0.5f * (intrinsicsS.getFocal().x() + intrinsicsS.getFocal().y());
+  const float cross_cam_search_radius = std::max(20.f, baseline * avg_focal * 2.f);
 
   for (size_t i = 0; i < primary_obs.size(); i++) {
     const camera::Observation& trackL = primary_obs[i];
@@ -82,11 +88,26 @@ void MultiSOFGPU::LaunchTrackingPrimaryToSecondary(CameraId primary_id, CameraId
     Vector2T uvL;
     intrinsicsP.denormalizePoint(xyL, uvL);
 
+    const Vector3T ray_in_secondary = secondary_from_primary.linear() * xyL.homogeneous();
+    const float z = ray_in_secondary.z();
+
     data.track = {uvL.x(), uvL.y()};
-    data.offset = {offset.x(), offset.y()};
     data.track_status = false;
     data.ncc_threshold = 0.8f;
-    data.search_radius_px = 2048.f;
+
+    if (z < 1e-8) {
+      data.offset = {0.f, 0.f};
+      data.search_radius_px = 0.f;
+      continue;
+    }
+
+    const Vector2T xyR_init(ray_in_secondary.x() / z, ray_in_secondary.y() / z);
+    Vector2T uvR_init;
+    intrinsicsS.denormalizePoint(xyR_init, uvR_init);
+
+    const Vector2T offset = uvR_init - uvL;
+    data.offset = {offset.x(), offset.y()};
+    data.search_radius_px = cross_cam_search_radius;
   }
 
   tracks_data.copy_top_n(ToGPU, primary_obs.size(), stream.get_stream());

@@ -96,7 +96,7 @@ __launch_bounds__(32) __global__
   info_mat[2] = 0.f;
   info_mat[3] = 1.f / 9.f;
 
-  const int levels = min(prevFrameGradYPyramid.levels, (int)(log1pf(search_radius_px)));
+  const int levels = prevFrameGradYPyramid.levels;
 
   assert(levels <= prevFrameGradXPyramid.levels);
 
@@ -300,6 +300,15 @@ __launch_bounds__(32) __global__
       }
 
       if (isConverged) {
+        const float level_radius = search_radius_px / (float)(1 << level);
+        const float dx = shifted_curr_xy.x - xy2Save.x;
+        const float dy = shifted_curr_xy.y - xy2Save.y;
+        if (dx * dx + dy * dy > level_radius * level_radius) {
+          isConverged = false;
+        }
+      }
+
+      if (isConverged) {
         float sum_prev_squared = 0.f;
         float sum_curr_squared = 0.f;
         float sum_prev_curr = 0.f;
@@ -398,7 +407,7 @@ __launch_bounds__(32) __global__
   info_mat[2] = 0.f;
   info_mat[3] = 1.f / 9.f;
 
-  const int levels = min(prevFrameGradXPyramid.levels, (int)(log1pf(search_radius_px)));
+  const int levels = prevFrameGradXPyramid.levels;
 
   const int topLevelIndex = levels - 1;  // smallest image
 
@@ -575,6 +584,15 @@ __launch_bounds__(32) __global__
         }
 
         shifted_curr_xy.x += v_x;
+      }
+
+      if (isConverged) {
+        const float level_radius = search_radius_px / (float)(1 << level);
+        const float dx = shifted_curr_xy.x - xy2Save.x;
+        const float dy = shifted_curr_xy.y - xy2Save.y;
+        if (dx * dx + dy * dy > level_radius * level_radius) {
+          isConverged = false;
+        }
       }
 
       if (isConverged) {

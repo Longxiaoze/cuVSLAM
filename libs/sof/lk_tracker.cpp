@@ -93,10 +93,7 @@ bool LKFeatureTracker::trackPoint(const GradientPyramidT& prevFrameGradPyramid,
 
   info = camera::GetDefaultObservationInfoUV();
 
-  // Logic is similar to what is in klt_tracker.cpp
-  const int levels = std::min(prevFrameGradPyramid.getLevelsCount(), static_cast<int>(std::log1p(search_radius_px)));
-
-  assert(levels <= prevFrameGradPyramid.getLevelsCount());
+  const int levels = prevFrameGradPyramid.getLevelsCount();
 
   const int topLevelIndex = levels - 1;  // smallest image
 
@@ -160,6 +157,13 @@ bool LKFeatureTracker::trackPoint(const GradientPyramidT& prevFrameGradPyramid,
           xy2 += v;
         }
 
+        if (isConverged) {
+          const float level_radius = search_radius_px / static_cast<float>(1 << level);
+          if ((xy2 - xy2Save).norm() > level_radius) {
+            isConverged = false;
+          }
+        }
+
         const bool isNCC = isConverged && ncc(imagePatch1, imagePatch2) > ncc_threshold;
 
         if (!isNCC && level > 0) {
@@ -196,10 +200,7 @@ bool LKTrackerHorizontal::trackPoint(const GradientPyramidT& prevFrameGradPyrami
 
   info = camera::GetDefaultObservationInfoUV();
 
-  // Logic is similar to what is in klt_tracker.cpp
-  const int levels = std::min(prevFrameGradPyramid.getLevelsCount(), static_cast<int>(std::log1p(search_radius_px)));
-
-  assert(levels <= prevFrameGradPyramid.getLevelsCount());
+  const int levels = prevFrameGradPyramid.getLevelsCount();
 
   const int topLevelIndex = levels - 1;  // smallest image
 
@@ -255,6 +256,13 @@ bool LKTrackerHorizontal::trackPoint(const GradientPyramidT& prevFrameGradPyrami
           }
 
           xy2 += v;
+        }
+
+        if (isConverged) {
+          const float level_radius = search_radius_px / static_cast<float>(1 << level);
+          if ((xy2 - xy2Save).norm() > level_radius) {
+            isConverged = false;
+          }
         }
 
         const bool isNCC = isConverged && ncc(imagePatch1, imagePatch2) > ncc_threshold;

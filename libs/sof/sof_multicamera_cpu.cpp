@@ -15,8 +15,10 @@
  * of the software or derivative works thereof, you agree to be bound by this License.
  */
 
+#include <cmath>
 #include <memory>
 
+#include "common/isometry_utils.h"
 #include "sof/internal/sof_multicamera_cpu.h"
 #include "sof/sof_create.h"
 
@@ -56,7 +58,12 @@ void MultiSOFCPU::LaunchTrackingPrimaryToSecondary(CameraId primary_id, CameraId
 
   const std::unique_ptr<IFeatureTracker>& tracker = secondary_from_primary_sof_[primary_id][secondary_id];
 
-  const Vector2T offset = intrinsicsS.getPrincipal() - intrinsicsP.getPrincipal();
+  const Isometry3T secondary_from_primary =
+      rig_.camera_from_rig[secondary_id] * rig_.camera_from_rig[primary_id].inverse();
+
+  const float baseline = secondary_from_primary.translation().norm();
+  const float avg_focal = 0.5f * (intrinsicsS.getFocal().x() + intrinsicsS.getFocal().y());
+  const float cross_cam_search_radius = std::max(20.f, baseline * avg_focal * 2.f);
 
   secondary_image->build_cpu_image_pyramid(secondary_source, box_prefilter_);
   secondary_image->build_cpu_gradient_pyramid(tracker->isHorizontal());
@@ -66,11 +73,23 @@ void MultiSOFCPU::LaunchTrackingPrimaryToSecondary(CameraId primary_id, CameraId
     const Vector2T& xyL = trackL.xy;
     Vector2T uvL;
     intrinsicsP.denormalizePoint(xyL, uvL);
-    Vector2T uvR = uvL + offset;
-    Matrix2T info;  // unused
+
+    const Vector3T ray_in_secondary = secondary_from_primary.linear() * xyL.homogeneous();
+    const float z = ray_in_secondary.z();
+
+    if (z < 1e-8) {
+      continue;
+    }
+
+    const Vector2T xyR_init(ray_in_secondary.x() / z, ray_in_secondary.y() / z);
+    Vector2T uvR;
+    intrinsicsS.denormalizePoint(xyR_init, uvR);
+
+    Matrix2T info;
 
     if (tracker->trackPoint(primary_image->cpu_gradient_pyramid(), secondary_image->cpu_gradient_pyramid(),
-                            primary_image->cpu_image_pyramid(), secondary_image->cpu_image_pyramid(), uvL, uvR, info)) {
+                            primary_image->cpu_image_pyramid(), secondary_image->cpu_image_pyramid(), uvL, uvR, info,
+                            cross_cam_search_radius)) {
       Vector2T xyR;
       intrinsicsS.normalizePoint(uvR, xyR);
 
