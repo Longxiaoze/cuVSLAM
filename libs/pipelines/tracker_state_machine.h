@@ -25,48 +25,78 @@
 namespace cuvslam::pipelines {
 
 struct StateMachineSettings {
-  // Effectively disable periodic re-estimation; gravity estimated once at boot
-  int64_t gravity_update_period_ns = 5e12;
-
+  // Hard cap on inter-frame gap. Anything larger triggers a full reset (the IMU preintegration is
+  // no longer trustworthy across that gap).
   int64_t max_integration_time_ns = 1e9;
 
-  size_t min_num_kf_for_gravity = 20;  // cant be larger then map size!
+  // Minimum number of keyframes that must accumulate before gravity init is attempted.
+  size_t min_num_kf_for_gravity = 20;
 
-  int64_t min_time_period_ns = 2e9;   // require at least 2s of keyframe history
-  int64_t max_time_period_ns = 25e9;  // 25 seconds
+  // Minimum time span covered by the keyframe history before gravity init is attempted.
+  int64_t min_time_period_ns = 2e9;  // 2s
+
+  // Sliding-window size for the keyframe history. Older keyframes are dropped.
+  int64_t max_time_period_ns = 25e9;  // 25s
+
+  // Period at which gravity is re-estimated once the SM is in the Ok state. Set to a very large
+  // value (e.g. the default 5e12 = ~83 min) to effectively disable periodic re-estimation; gravity
+  // is then estimated once at boot only.
+  int64_t gravity_update_period_ns = 5e12;
 };
 
+// Three-state machine driving IMU initialization (gravity / bias / velocity estimation).
+//
+// Lifecycle:
+//   Uninitialized -> Initializing : enough keyframes accumulated to attempt gravity init.
+//   Initializing  -> Ok           : the gravity-init callback succeeded.
+//   Initializing  -> Initializing : the callback failed; retry on the next keyframe (timeline
+//                                   is preserved instead of being wiped).
+//   Ok            -> Ok           : after `gravity_update_period_ns` elapsed since last successful
+//                                   estimation, the callback fires again to refine gravity. On
+//                                   failure, the timeline is preserved and we retry next keyframe.
+//   any           -> Uninitialized: explicit Reset, or FrameDropped (gap > max_integration_time_ns).
+//
+// Per-frame visual-tracking failures (Event::FrameFailed) do NOT clear progress — the keyframe
+// timeline only resets on dropped frames or explicit reset.
+//
+// Settings are passed per-call so they always reflect the latest values from
+// ApplyExpertParameters without requiring a getter/setter on a live object.
 class StateMachine {
 public:
-  enum State { Ok, Uninitialized };
+  enum class State { Uninitialized, Initializing, Ok };
 
-public:
+  enum class Event {
+    FrameOk,       // visual tracking succeeded and IMU samples covered the gap
+    FrameFailed,   // visual tracking failed but IMU samples were intact (no reset)
+    FrameDropped,  // IMU drop or large gap; trigger full reset
+    Reset,         // explicit reset (e.g. odometry::reset())
+  };
+
+  // Returns true on success. A false return keeps the SM in Initializing so the caller retries on
+  // the next keyframe rather than wiping progress.
+  using GravityInitFn = std::function<bool(size_t num_kfs)>;
+
   StateMachine() = default;
 
-  // Settings are passed per-call so they always reflect the latest values from
-  // ApplyExpertParameters without requiring a getter/setter on a live object.
-  State update_frame_state(bool is_keyframe, bool track_result, int64_t ts_ns, const StateMachineSettings& s);
+  void set_gravity_init_fn(GravityInitFn fn);
 
-  void register_gravity_estimation_callback(const std::function<bool(size_t num_kfs)>& cb);
-  const State& get_state() const;
+  // Single dispatcher. Returns the post-event state.
+  State on_event(Event e, int64_t ts_ns, bool is_keyframe, const StateMachineSettings& s);
+
+  State state() const { return state_; }
 
   void reset();
 
 private:
-  struct TrackResult {
-    bool status;
-    int64_t time_ns;
-  };
+  bool ready_to_init(int64_t ts_ns, const StateMachineSettings& s) const;
 
-  std::list<TrackResult> frames_timeline_;
   std::list<int64_t> keyframe_timeline_;
+  int64_t last_successful_frame_time_ns_ = -1;
+  int64_t last_gravity_estimation_time_ns_ = -1;
 
-  int64_t last_gravity_estimation_time_ns = -1;
-  int64_t last_successfull_frame_time_ns = -1;
+  GravityInitFn gravity_init_fn_ = nullptr;
 
-  std::function<bool(size_t num_kfs)> gravity_calculate_callback_ = nullptr;
-
-  State state_ = Uninitialized;
+  State state_ = State::Uninitialized;
 };
 
 }  // namespace cuvslam::pipelines

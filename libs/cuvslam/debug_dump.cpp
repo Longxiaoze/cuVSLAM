@@ -173,12 +173,22 @@ void DumpConfiguration(const std::string& input_dump_root_dir, const Rig& rig, c
     dst_cfg["rgbd_settings"]["depth_scale_factor"] = cfg.rgbd_settings.depth_scale_factor;
     dst_cfg["rgbd_settings"]["depth_camera_id"] = cfg.rgbd_settings.depth_camera_id;
     dst_cfg["rgbd_settings"]["enable_depth_stereo_tracking"] = cfg.rgbd_settings.enable_depth_stereo_tracking;
-    if (cfg.odometry_mode == Odometry::OdometryMode::Inertial && !rig.imus.empty()) {
+    if ((cfg.odometry_mode == Odometry::OdometryMode::Inertial ||
+         cfg.odometry_mode == Odometry::OdometryMode::Multisensor) &&
+        !rig.imus.empty()) {
       dst_cfg["imu"]["gyroscope_noise_density"] = rig.imus[0].gyroscope_noise_density;
       dst_cfg["imu"]["gyroscope_random_walk"] = rig.imus[0].gyroscope_random_walk;
       dst_cfg["imu"]["accelerometer_noise_density"] = rig.imus[0].accelerometer_noise_density;
       dst_cfg["imu"]["accelerometer_random_walk"] = rig.imus[0].accelerometer_random_walk;
       dst_cfg["imu"]["frequency"] = rig.imus[0].frequency;
+    }
+    if (cfg.odometry_mode == Odometry::OdometryMode::Multisensor) {
+      Json::Value depth_cams(Json::arrayValue);
+      for (int32_t id : cfg.multisensor_settings.depth_camera_ids) depth_cams.append(id);
+      dst_cfg["multisensor_settings"]["depth_camera_ids"] = depth_cams;
+      dst_cfg["multisensor_settings"]["depth_scale_factor"] = cfg.multisensor_settings.depth_scale_factor;
+      dst_cfg["multisensor_settings"]["enable_depth_stereo_tracking"] =
+          cfg.multisensor_settings.enable_depth_stereo_tracking;
     }
   }
   {

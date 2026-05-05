@@ -54,6 +54,10 @@ if(USE_CERES)
     # include(cmake/ext/ceres.cmake)
 endif()
 
+if(USE_CUNLS AND NOT USE_CUDA)
+    message(FATAL_ERROR "USE_CUNLS requires USE_CUDA")
+endif()
+
 if (MSVC)
     # TODO: move to cuVSLAMUtils.cmake?
     set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE INTERNAL "hardcoded. do not change it. hide from user" FORCE)
@@ -69,9 +73,7 @@ if(USE_CUDA)
     find_package(CUDAToolkit REQUIRED)
 
     if(USE_CUNLS)
-        message(FATAL_ERROR "cuNLS is not supported yet")
-        # TODO: implement cunls support (deps: cublas, cusolver, cusparse)
-        # include(cmake/ext/cunls.cmake)
+        include(${CMAKE_CURRENT_LIST_DIR}/ext/cunls.cmake)
     endif()
 
     # Print CUDA information

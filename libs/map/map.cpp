@@ -103,6 +103,7 @@ void UnifiedMap::add_keyframe(int64_t time_ns, const State& state, const IMUPrei
 }
 
 Map<TrackId, Vector3T> UnifiedMap::get_recent_landmarks() const {
+  TRACE_EVENT ev = profiler_domain_.trace_event("get_recent_landmarks");
   std::lock_guard<std::mutex> lock(map_mutex_);
   if (consecutive_keyframes_.empty()) {
     return {};
@@ -120,6 +121,7 @@ Map<TrackId, Vector3T> UnifiedMap::get_recent_landmarks() const {
 }
 
 TrackIdMap UnifiedMap::get_recent_landmarks(CameraId cam_id) const {
+  TRACE_EVENT ev = profiler_domain_.trace_event("get_recent_landmarks(cam_id)");
   std::lock_guard<std::mutex> lock(map_mutex_);
   if (consecutive_keyframes_.empty()) {
     return {};

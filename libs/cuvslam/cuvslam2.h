@@ -218,7 +218,8 @@ struct ImuCalibration {
  *
  * @note 1 to 32 cameras are supported now.
  * @note 0 or 1 IMU sensor is supported now.
- * @note IMU sensor can be used only in Odometry::OdometryMode::Inertial mode with a single stereo camera.
+ * @note An IMU sensor can be fused in Odometry::OdometryMode::Inertial (stereo + IMU) and in
+ * Odometry::OdometryMode::Multisensor (multi-camera, optional RGBD subset, optional single IMU).
  */
 struct Rig {
   std::vector<Camera> cameras;       ///< Cameras; 1 to 32 cameras are supported now
@@ -373,7 +374,43 @@ public:
     Inertial,     ///< Uses stereo camera and IMU measurements. A single stereo-camera with a single IMU sensor is
                   ///< supported.
     RGBD,  ///< Uses RGB-D camera for tracking. A single RGB-D camera is supported. RGB & Depth images must be aligned.
-    Mono   ///< Uses a single camera, tracking is accurate up to scale.
+    Mono,  ///< Uses a single camera, tracking is accurate up to scale.
+
+    /// Unified multi-sensor mode (cuNLS-based). Supports any mix of plain RGB cameras,
+    /// RGB-D cameras (any subset of the rig), with or without a single IMU. IMU fusion
+    /// is enabled automatically when the rig contains an IMU; sba_mode is forced to the
+    /// inertial bundler in that case. Per-camera depth presence is configured through
+    /// MultisensorSettings::depth_camera_ids. Requires a build with cuNLS support.
+    Multisensor,
+  };
+
+  /**
+   * @brief Multisensor odometry settings
+   *
+   * Used only when Config::odometry_mode == OdometryMode::Multisensor.
+   *
+   * Multisensor mode supports any mix of:
+   *   - one or more plain RGB cameras
+   *   - one or more RGB-D cameras (any subset of the rig)
+   *   - a single optional IMU (configured through Rig::imus)
+   *
+   * The rig's IMU presence drives IMU fusion automatically — there is no separate
+   * `with_imu` flag. The only fields here describe depth handling.
+   */
+  struct MultisensorSettings {
+    /// @brief Camera ids (matching Rig::cameras indices) that supply depth images at Track() time.
+    ///
+    /// Empty means: no depth (pure multi-camera-RGB). Cameras not listed here are treated as
+    /// RGB-only. Mixed rigs (some RGB, some RGB-D) are supported by listing only the depth-capable
+    /// cameras.
+    std::vector<int32_t> depth_camera_ids;
+
+    /// @brief Scale factor for depth measurements (denominator: raw depth divided by this is meters).
+    /// Applied uniformly across all depth cameras. Default: 1.f.
+    float depth_scale_factor = 1.f;
+
+    /// @brief Allow stereo 2D tracking between depth-aligned cameras and other cameras. Default: false.
+    bool enable_depth_stereo_tracking = false;
   };
 
   /**
@@ -446,6 +483,8 @@ public:
     bool debug_imu_mode = false;
     /// RGBD odometry settings.
     RGBDSettings rgbd_settings;
+    /// Multisensor odometry settings. Used only when odometry_mode == OdometryMode::Multisensor.
+    MultisensorSettings multisensor_settings;
   };
 
   // TODO(vikuznetsov): remove when https://gcc.gnu.org/bugzilla/show_bug.cgi?id=88165 is fixed
@@ -568,7 +607,10 @@ public:
    * @param[in]  masks  (Optional) an array of corresponding masks no more than rig->num_cameras.
    * Must use ImageData::DataType::UINT8. Partial ImageSet is supported, for example if mask is calculated on for some
    * cameras. Corresponding cameras are identified by Image::camera_index.
-   * @param[in]  depths  (Optional) an array of corresponding depth images. One depth image is now supported.
+   * @param[in]  depths  (Optional) an array of depth images. In OdometryMode::RGBD exactly one depth
+   * image must be provided. In OdometryMode::Multisensor pass one depth image per depth-providing
+   * camera; each entry is matched to its rig camera by Image::camera_index and every camera_index
+   * must appear in MultisensorSettings::depth_camera_ids. Other modes must pass an empty array.
    * Must use ImageData::Encoding::MONO and ImageData::DataType::UINT16 or ImageData::DataType::FLOAT32.
    * @param[in]  options (Optional) per-frame options that override default settings for this call only.
    * The options do not affect subsequent Track() calls - each call is independent (stateless).

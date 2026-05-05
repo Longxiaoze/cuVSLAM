@@ -27,16 +27,29 @@ set(SOURCES
     service.cpp
     )
 
+set(LIBS
+    camera
+    common
+    dense_hash_map::dense_hash_map
+    imu
+    profiler
+)
+
+# GPU-backed depth/plane maps (PlaneMap, DepthPointMap) live here behind USE_CUNLS because they
+# use cuda_modules and the cuNLS-aligned cuda_kernels primitives.
+if(USE_CUNLS)
+    enable_language(CUDA)
+    set(HEADERS ${HEADERS} plane_map.h depth_point_map.h)
+    set(SOURCES ${SOURCES} plane_map.cpp depth_point_map.cpp)
+    set_source_files_properties(plane_map.cpp depth_point_map.cpp PROPERTIES LANGUAGE CUDA)
+    set(LIBS ${LIBS} cunls::cunls cuda_modules)
+endif()
+
 setup_staticlib_project(
         MODULE_NAME map
         HEADERS ${HEADERS}
         SOURCES ${SOURCES}
-        LIBRARIES
-            camera
-            common
-            dense_hash_map::dense_hash_map
-            imu
-            profiler
+        LIBRARIES ${LIBS}
 )
 
 add_subdirectory(test)

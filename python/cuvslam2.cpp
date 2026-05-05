@@ -408,7 +408,34 @@ NB_MODULE(pycuvslam, m) {
       .value("RGBD", Odometry::OdometryMode::RGBD,
              "Uses RGB-D camera for tracking. A single RGB-D camera is supported. RGB & Depth images must be aligned.")
       .value("Mono", Odometry::OdometryMode::Mono, "Uses a single camera, tracking is accurate up to scale.")
+      .value("Multisensor", Odometry::OdometryMode::Multisensor,
+             "Unified multi-sensor mode. Supports any mix of plain RGB cameras, RGB-D cameras (any subset of the rig), "
+             "and a single optional IMU. IMU fusion turns on automatically when the rig contains an IMU. "
+             "Requires a build with cuNLS support.")
       .export_values();
+
+  // Multisensor Settings class — describes available sensors at construction time for OdometryMode::Multisensor.
+  nb::class_<Odometry::MultisensorSettings>(
+      odom_cls, "MultisensorSettings",
+      "Settings for the unified Multisensor odometry mode.\n\n"
+      "Multisensor supports any mix of plain RGB cameras, RGB-D cameras (any subset of the rig), and a single optional "
+      "IMU. The fields here describe depth handling; IMU presence is auto-detected from `Rig.imus`.")
+      .def(nb::init<std::vector<int32_t>, float, bool>(), nb::kw_only(),
+           nb::arg("depth_camera_ids") = Odometry::MultisensorSettings{}.depth_camera_ids,
+           nb::arg("depth_scale_factor") = Odometry::MultisensorSettings{}.depth_scale_factor,
+           nb::arg("enable_depth_stereo_tracking") = Odometry::MultisensorSettings{}.enable_depth_stereo_tracking)
+      .def_rw("depth_camera_ids", &Odometry::MultisensorSettings::depth_camera_ids,
+              "Camera indices that supply depth images. Empty list = no depth (multi-RGB only).")
+      .def_rw("depth_scale_factor", &Odometry::MultisensorSettings::depth_scale_factor,
+              "Scale factor for depth measurements (applied uniformly to every depth camera).")
+      .def_rw("enable_depth_stereo_tracking", &Odometry::MultisensorSettings::enable_depth_stereo_tracking,
+              "Allow stereo 2D tracking between depth-aligned cameras and other cameras.")
+      .def("__repr__", [](const Odometry::MultisensorSettings& s) {
+        return nb::str(
+                   "cuvslam.Odometry.MultisensorSettings(depth_camera_ids={}, depth_scale_factor={}, "
+                   "enable_depth_stereo_tracking={})")
+            .format(s.depth_camera_ids, s.depth_scale_factor, s.enable_depth_stereo_tracking);
+      });
 
   // RGBD Settings class
   nb::class_<Odometry::RGBDSettings>(odom_cls, "RGBDSettings", "Settings for RGB-D odometry mode")
@@ -431,7 +458,8 @@ NB_MODULE(pycuvslam, m) {
   nb::class_<Odometry::Config>(odom_cls, "Config")
       // WARNING: the order of init arguments in this definition must coincide with the order in the structure
       .def(nb::init<Odometry::MulticameraMode, Odometry::OdometryMode, bool, bool, bool, bool, bool, bool, bool, bool,
-                    float, std::string_view, bool, const Odometry::RGBDSettings&>(),
+                    float, std::string_view, bool, const Odometry::RGBDSettings&,
+                    const Odometry::MultisensorSettings&>(),
            nb::kw_only(), nb::arg("multicam_mode") = Odometry::Config{}.multicam_mode,
            nb::arg("odometry_mode") = Odometry::Config{}.odometry_mode, nb::arg("use_gpu") = Odometry::Config{}.use_gpu,
            nb::arg("async_sba") = Odometry::Config{}.async_sba,
@@ -444,7 +472,8 @@ NB_MODULE(pycuvslam, m) {
            nb::arg("max_frame_delta_s") = Odometry::Config{}.max_frame_delta_s,
            nb::arg("debug_dump_directory") = Odometry::Config{}.debug_dump_directory,
            nb::arg("debug_imu_mode") = Odometry::Config{}.debug_imu_mode,
-           nb::arg("rgbd_settings") = Odometry::Config{}.rgbd_settings)
+           nb::arg("rgbd_settings") = Odometry::Config{}.rgbd_settings,
+           nb::arg("multisensor_settings") = Odometry::Config{}.multisensor_settings)
       .def_rw("multicam_mode", &Odometry::Config::multicam_mode, "See :class:`Odometry.MulticameraMode`")
       .def_rw("odometry_mode", &Odometry::Config::odometry_mode, "See :class:`Odometry.OdometryMode`")
       .def_rw("use_gpu", &Odometry::Config::use_gpu, "Enable to use GPU acceleration")
@@ -465,7 +494,9 @@ NB_MODULE(pycuvslam, m) {
               "Directory for debug data dumps. If empty, no debug data will be dumped")
       .def_rw("debug_imu_mode", &Odometry::Config::debug_imu_mode, "Enable IMU debug mode")
       .def_rw("rgbd_settings", &Odometry::Config::rgbd_settings,
-              "Settings for RGB-D odometry mode. See :class:`Odometry.RGBDSettings`");
+              "Settings for RGB-D odometry mode. See :class:`Odometry.RGBDSettings`")
+      .def_rw("multisensor_settings", &Odometry::Config::multisensor_settings,
+              "Settings for Multisensor odometry mode. See :class:`Odometry.MultisensorSettings`");
 
   // Odometry::State binding
   nb::class_<Odometry::State>(odom_cls, "State",
@@ -557,8 +588,9 @@ NB_MODULE(pycuvslam, m) {
           "Track a rig pose using current image frame.\n\n"
           "Synchronously tracks current image frame and returns a PoseEstimate.\n\n"
           "By default, this function uses visual odometry to compute a pose.\n"
-          "In Inertial mode, if visual odometry tracker fails to compute a pose, the function returns the position "
-          "calculated from a user-provided IMU data.\n"
+          "In Inertial mode (or Multisensor mode with an IMU configured in the rig), if visual odometry "
+          "tracker fails to compute a pose, the function returns the position calculated from a user-provided "
+          "IMU data.\n"
           "If after several calls of :meth:`track` visual odometry is not able to recover, "
           "then invalid pose will be returned.\n"
           "The track will output poses in the same coordinate system until a loss of tracking.\n\n"
@@ -585,8 +617,9 @@ NB_MODULE(pycuvslam, m) {
           },
           nb::arg("sensor_index"), nb::arg("imu_measurement"),
           "Register an IMU measurement.\n\n"
-          "Requires Inertial mode. If visual odometry loses camera position, it briefly continues execution\n"
-          "using user-provided IMU measurements while trying to recover the position.\n"
+          "Requires Inertial mode, or Multisensor mode with an IMU configured in the rig.\n"
+          "If visual odometry loses camera position, it briefly continues execution using user-provided\n"
+          "IMU measurements while trying to recover the position.\n"
           "IMU sensors and cameras clocks must be synchronized, :meth:`track` and "
           ":meth:`register_imu_measurement` must be called in strict ascending order of timestamps.")
       .def(
@@ -614,7 +647,7 @@ NB_MODULE(pycuvslam, m) {
           },
           "Get gravity vector in the last VO frame.\n\n"
           "Returns `None` if gravity is not yet available.\n"
-          "Requires Inertial mode (`odometry_mode=Odometry.OdometryMode.Inertial` in :class:`Odometry.Config`)")
+          "Requires Inertial mode, or Multisensor mode with an IMU configured in the rig.")
       .def(
           "get_final_landmarks",
           [](const Odometry& self) -> std::unordered_map<uint64_t, Vector3f> { return self.GetFinalLandmarks(); },

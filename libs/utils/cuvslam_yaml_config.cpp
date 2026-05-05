@@ -129,6 +129,8 @@ bool LoadOdometryConfigFromFile(const char* filepath, Odometry::Config& config) 
       config.odometry_mode = Odometry::OdometryMode::RGBD;
     else if (s == "mono")
       config.odometry_mode = Odometry::OdometryMode::Mono;
+    else if (s == "multisensor")
+      config.odometry_mode = Odometry::OdometryMode::Multisensor;
     else
       throw std::runtime_error("unknown odometry_mode: " + s);
   }
@@ -138,16 +140,23 @@ bool LoadOdometryConfigFromFile(const char* filepath, Odometry::Config& config) 
     if (YAML::Node v = rgbd["enable_depth_stereo_tracking"])
       config.rgbd_settings.enable_depth_stereo_tracking = v.as<bool>();
   }
+  if (YAML::Node ms = node["multisensor_settings"]; ms && ms.IsMap()) {
+    if (YAML::Node v = ms["depth_camera_ids"])
+      config.multisensor_settings.depth_camera_ids = v.as<std::vector<int32_t>>();
+    if (YAML::Node v = ms["depth_scale_factor"]) config.multisensor_settings.depth_scale_factor = v.as<float>();
+    if (YAML::Node v = ms["enable_depth_stereo_tracking"])
+      config.multisensor_settings.enable_depth_stereo_tracking = v.as<bool>();
+  }
   if (node["debug_dump_directory"]) {
     TraceWarning(
         "LoadOdometryConfigFromFile: 'debug_dump_directory' cannot be loaded from YAML (string_view does not own "
         "memory); set it directly on the returned config.\n");
   }
-  WarnUnknownKeys(
-      node, "OdometryConfig",
-      {"use_gpu", "async_sba", "use_motion_model", "use_denoising", "rectified_stereo_camera",
-       "enable_observations_export", "enable_landmarks_export", "enable_final_landmarks_export", "max_frame_delta_s",
-       "debug_imu_mode", "multicam_mode", "odometry_mode", "rgbd_settings", "debug_dump_directory"});
+  WarnUnknownKeys(node, "OdometryConfig",
+                  {"use_gpu", "async_sba", "use_motion_model", "use_denoising", "rectified_stereo_camera",
+                   "enable_observations_export", "enable_landmarks_export", "enable_final_landmarks_export",
+                   "max_frame_delta_s", "debug_imu_mode", "multicam_mode", "odometry_mode", "rgbd_settings",
+                   "multisensor_settings", "debug_dump_directory"});
   return true;
 }
 

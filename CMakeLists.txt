@@ -58,6 +58,7 @@ set(CUVSLAM_DATASETS $ENV{HOME}/datasets CACHE PATH "Path to image datasets fold
 set(CUVSLAM_OUTPUT ${CMAKE_BINARY_DIR}/output CACHE PATH "Path to output folder")
 set(CUDAToolkit_ROOT /usr/local/cuda CACHE PATH "Path to installed CUDA toolkit")
 set(CMAKE_CUDA_COMPILER ${CUDAToolkit_ROOT}/bin/nvcc CACHE PATH "Path to installed CUDA compiler")
+set(CUVSLAM_CUNLS_ROOT "" CACHE PATH "Path to cuNLS install prefix (include/ and lib/libcunls.a); required when USE_CUNLS is ON")
 
 option(TREAT_WARNINGS_AS_ERRORS "Treat warnings as error" OFF)
 option(USE_CUNLS "Build with cunls support." OFF)

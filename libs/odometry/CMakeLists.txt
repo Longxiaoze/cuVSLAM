@@ -53,6 +53,13 @@ if(USE_CUDA)
     set(HEADERS ${HEADERS} rgbd_odometry.h)
 endif()
 
+# multisensor_odometry pulls in the cuNLS-based SolverSfMMultisensor pipeline. Gate it on
+# USE_CUNLS (which implies USE_CUDA) so the file isn't compiled when cuNLS is unavailable.
+if(USE_CUNLS)
+    set(SOURCES ${SOURCES} multisensor_odometry.cpp)
+    set(HEADERS ${HEADERS} multisensor_odometry.h)
+endif()
+
 setup_staticlib_project(
         MODULE_NAME ${MODULE_NAME}
         HEADERS ${HEADERS}

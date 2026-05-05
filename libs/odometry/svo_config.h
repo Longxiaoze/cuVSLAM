@@ -19,6 +19,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "common/imu_calibration.h"
 #include "pipelines/tracker_state_machine.h"
@@ -45,12 +46,47 @@ struct TrackPerFrameSettings {
   // TODO[Zheng]: Future per-frame settings (PnP, ICP, RANSAC, …) go here as additional fields.
 };
 
+// Configuration of the available sensor set for MultisensorOdometry.
+//
+// MultisensorOdometry supports any mix of:
+//   * one or more plain RGB cameras
+//   * one or more RGB-D cameras (depth available per camera)
+//   * a single optional IMU
+// Concretely the four supported configurations are:
+//   1) multi-RGB,                  no IMU
+//   2) multi-RGB-D (any subset),   no IMU
+//   3) mixed RGB + RGB-D,          no IMU
+//   4) any of the above            +  single IMU
+// Construction-time fields here describe which inputs the solver should expect.
+struct MultisensorSettings {
+  // True if a single IMU is part of the rig and IMU measurements will be supplied via
+  // add_imu_measurement(). When true, sba_settings.mode must be InertialCPU or
+  // InertialGPU; the launcher and public API enforce this automatically. Default: false.
+  bool with_imu = false;
+
+  // Camera ids that provide depth measurements. Empty = no depth (pure multi-camera-RGB).
+  // Each listed camera will deliver a depth image alongside its RGB frame at track() time;
+  // any camera not in this list is treated as RGB-only. Mixed rigs (some RGB, some RGB-D)
+  // are supported by listing only the depth-capable cameras here.
+  std::vector<int32_t> depth_camera_ids;
+
+  // Scale factor for depth measurements (denominator to convert raw depth values to meters).
+  // Applied uniformly across all depth cameras. Used only when depth_camera_ids is non-empty.
+  // Default: 1.0.
+  float depth_scale_factor = 1.f;
+
+  // Allow stereo 2D tracking between depth-aligned cameras and other cameras.
+  // Used only when depth_camera_ids is non-empty. Default: false.
+  bool enable_depth_stereo_tracking = false;
+};
+
 struct Settings {
   sba::Settings sba_settings;
   sof::Settings sof_settings;
   cuvslam::imu::ImuCalibration imu_calibration;
   KeyFrameSettings kf_settings;
   pipelines::StateMachineSettings sm_settings;
+  MultisensorSettings multisensor_settings;
   bool verbose = false;
   bool use_prediction = true;
 };

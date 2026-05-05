@@ -32,6 +32,13 @@ set(LIBS
     profiler
     )
 
+if(USE_CUNLS)
+    enable_language(CUDA)
+    list(APPEND SOURCES depth_point_map_test.cpp plane_map_test.cpp)
+    set_source_files_properties(depth_point_map_test.cpp plane_map_test.cpp PROPERTIES LANGUAGE CUDA)
+    list(APPEND LIBS cunls::cunls cuda_modules)
+endif()
+
 setup_test_project(
     MODULE_NAME ${MODULE_NAME}
     HEADERS ${HEADERS}

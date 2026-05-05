@@ -56,6 +56,17 @@ if(USE_CUDA)
     set(SOURCES ${SOURCES} track_online_rgbd.cpp)
 endif()
 
+# Multisensor pipeline depends on cuNLS-based MultisensorPoseEstimator / PlaneMap / DepthPointMap
+# in the pnp library, all of which are gated behind USE_CUNLS. USE_CUNLS implies USE_CUDA
+# (enforced in cmake/FindExt.cmake), so no separate USE_CUDA guard is needed here. TrackLifter is
+# also gated here because it includes pnp/multisensor_pose_estimator.h for the RGBDInfo struct.
+if(USE_CUNLS)
+    enable_language(CUDA)
+    set(HEADERS ${HEADERS} track_online_multisensor.h depth_maps_context.h imu_fusion_context.h track_lifter.h)
+    set(SOURCES ${SOURCES} track_online_multisensor.cpp depth_maps_context.cpp imu_fusion_context.cpp track_lifter.cpp)
+    set_source_files_properties(track_lifter.cpp PROPERTIES LANGUAGE CUDA)
+endif()
+
 if(USE_RERUN)
     set(HEADERS ${HEADERS} visualizer.h)
     set(SOURCES ${SOURCES} visualizer.cpp)
@@ -75,3 +86,5 @@ setup_staticlib_project(
         SOURCES ${SOURCES} inertial_pnp.cpp track_online_inertial.cpp
         LIBRARIES ${LIBS}
 )
+
+add_subdirectory(test)

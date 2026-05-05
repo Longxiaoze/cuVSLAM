@@ -54,6 +54,14 @@ if(USE_CUDA)
     set(SOURCES ${SOURCES} rgbd_camera_launcher.cpp)
 endif()
 
+# multisensor_camera_launcher includes odometry/multisensor_odometry.h, which is only built
+# under USE_CUNLS. Mirror the gate here so the launcher TU isn't compiled when the type is
+# unavailable.
+if(USE_CUNLS)
+    set(HEADERS ${HEADERS} multisensor_camera_launcher.h)
+    set(SOURCES ${SOURCES} multisensor_camera_launcher.cpp)
+endif()
+
 if(USE_RERUN)
     set(HEADERS ${HEADERS} visualizer.h)
     set(SOURCES ${SOURCES} visualizer.cpp)

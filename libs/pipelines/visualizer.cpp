@@ -22,6 +22,7 @@
 
 #include <rerun/archetypes/arrows3d.hpp>
 #include <rerun/archetypes/line_strips3d.hpp>
+#include <rerun/archetypes/mesh3d.hpp>
 #include <rerun/archetypes/points3d.hpp>
 
 namespace cuvslam::pipelines {
@@ -281,5 +282,165 @@ void clearTrajectory(const std::string& viewport_name, TrajectoryType trajectory
   recording.log(viewport_name + "/path", rerun::Clear());
   recording.log(viewport_name + "/axes", rerun::Clear());
 }
+
+void logCameraFrustums(const camera::Rig& rig, const Isometry3T& world_from_rig, const std::string& viewport_name,
+                       float frustum_depth) {
+  auto& visualizer = visualizer::RerunVisualizer::getInstance();
+  auto& recording = visualizer.getRecordingStream();
+
+  const rerun::Color kFrustumColors[] = {
+      {0, 200, 255}, {255, 100, 0}, {0, 255, 100}, {255, 0, 200},
+      {200, 200, 0}, {0, 100, 255}, {255, 200, 0}, {100, 255, 200},
+  };
+  constexpr int kNumColors = sizeof(kFrustumColors) / sizeof(kFrustumColors[0]);
+
+  for (int32_t cam_id = 0; cam_id < rig.num_cameras; ++cam_id) {
+    const auto* model = rig.intrinsics[cam_id];
+    if (!model) continue;
+
+    const Vector2T res = model->getResolution();
+    const Vector2T focal = model->getFocal();
+    const Vector2T principal = model->getPrincipal();
+
+    // world_from_cam = world_from_rig * (camera_from_rig)^{-1}
+    Isometry3T world_from_cam = world_from_rig * rig.camera_from_rig[cam_id].inverse();
+    Vector3T origin_w = world_from_cam.translation();
+
+    // 4 image corners in pixel coords → normalized → 3D ray at frustum_depth
+    const float corners_uv[4][2] = {{0.f, 0.f}, {res.x(), 0.f}, {res.x(), res.y()}, {0.f, res.y()}};
+
+    std::vector<rerun::Position3D> corners_w;
+    corners_w.reserve(4);
+    for (const auto& uv : corners_uv) {
+      float nx = (uv[0] - principal.x()) / focal.x();
+      float ny = (uv[1] - principal.y()) / focal.y();
+      Vector3T pt_cam(nx * frustum_depth, ny * frustum_depth, frustum_depth);
+      Vector3T pt_w = world_from_cam * pt_cam;
+      corners_w.emplace_back(pt_w.x(), pt_w.y(), pt_w.z());
+    }
+
+    rerun::Position3D origin_pos{origin_w.x(), origin_w.y(), origin_w.z()};
+    const rerun::Color& color = kFrustumColors[cam_id % kNumColors];
+    const std::string base = viewport_name + "/cam_" + std::to_string(cam_id);
+
+    // 4 edges from origin to each corner
+    std::vector<std::vector<rerun::Position3D>> edges;
+    edges.reserve(8);
+    for (int i = 0; i < 4; ++i) {
+      edges.push_back({origin_pos, corners_w[i]});
+    }
+    // 4 edges forming the near-plane rectangle
+    for (int i = 0; i < 4; ++i) {
+      edges.push_back({corners_w[i], corners_w[(i + 1) % 4]});
+    }
+
+    recording.log(base, rerun::LineStrips3D(edges).with_colors(color).with_radii(0.003f));
+  }
+}
+
+void logVector3D(const Vector3T& vec, const Vector3T& origin, const std::string& viewport_name, const Color& color,
+                 float scale) {
+  rerun::Position3D rerun_origin{origin.x(), origin.y(), origin.z()};
+  rerun::Vector3D rerun_vec{vec.x() * scale, vec.y() * scale, vec.z() * scale};
+  auto& visualizer = visualizer::RerunVisualizer::getInstance();
+  visualizer.getRecordingStream().log(
+      viewport_name, rerun::Arrows3D::from_vectors({rerun_vec}).with_origins({rerun_origin}).with_colors(color));
+}
+
+#ifdef USE_CUNLS
+namespace {
+const rerun::Color kPlaneColors[] = {
+    {230, 25, 75, 80},  {60, 180, 75, 80},  {255, 225, 25, 80}, {0, 130, 200, 80},  {245, 130, 48, 80},
+    {145, 30, 180, 80}, {70, 240, 240, 80}, {240, 50, 230, 80}, {210, 245, 60, 80}, {250, 190, 212, 80},
+};
+const int kNumPlaneColors = sizeof(kPlaneColors) / sizeof(kPlaneColors[0]);
+
+rerun::Color opaque(rerun::Color c) { return {c.r(), c.g(), c.b(), 255}; }
+}  // namespace
+
+void logPlanes(const std::vector<map::Plane>& planes, const std::string& viewport_name) {
+  if (planes.empty()) return;
+
+  auto& visualizer = visualizer::RerunVisualizer::getInstance();
+  auto& recording = visualizer.getRecordingStream();
+
+  for (size_t i = 0; i < planes.size(); ++i) {
+    const auto& plane = planes[i];
+    const std::string base = viewport_name + "/plane_" + std::to_string(i);
+    const rerun::Color color = kPlaneColors[i % kNumPlaneColors];
+
+    // Convex hull mesh (fan triangulation from centroid)
+    if (plane.convex_hull.size() >= 3) {
+      std::vector<rerun::Position3D> positions;
+      positions.reserve(plane.convex_hull.size() + 1);
+      positions.emplace_back(plane.centroid.x(), plane.centroid.y(), plane.centroid.z());
+      for (const auto& v : plane.convex_hull) {
+        positions.emplace_back(v.x(), v.y(), v.z());
+      }
+
+      std::vector<rerun::TriangleIndices> triangles;
+      const uint32_t n_hull = static_cast<uint32_t>(plane.convex_hull.size());
+      triangles.reserve(n_hull);
+      for (uint32_t j = 0; j < n_hull; ++j) {
+        triangles.push_back({0, j + 1, ((j + 1) % n_hull) + 1});
+      }
+
+      std::vector<rerun::Color> vert_colors(positions.size(), color);
+      recording.log(base + "/mesh",
+                    rerun::Mesh3D(positions).with_triangle_indices(triangles).with_vertex_colors(vert_colors));
+
+      // Hull outline
+      std::vector<rerun::Position3D> outline;
+      outline.reserve(plane.convex_hull.size() + 1);
+      for (const auto& v : plane.convex_hull) {
+        outline.emplace_back(v.x(), v.y(), v.z());
+      }
+      outline.push_back(outline.front());
+      recording.log(base + "/outline",
+                    rerun::LineStrips3D(rerun::components::LineStrip3D(outline)).with_colors(opaque(color)));
+    }
+
+    // Normal arrow
+    {
+      const float arrow_len = 0.3f;
+      rerun::Position3D origin{plane.centroid.x(), plane.centroid.y(), plane.centroid.z()};
+      rerun::Vector3D vec{plane.normal.x() * arrow_len, plane.normal.y() * arrow_len, plane.normal.z() * arrow_len};
+      recording.log(base + "/normal",
+                    rerun::Arrows3D::from_vectors({vec}).with_origins({origin}).with_colors(opaque(color)));
+    }
+
+    // Centroid point
+    {
+      rerun::Position3D pt{plane.centroid.x(), plane.centroid.y(), plane.centroid.z()};
+      recording.log(base + "/centroid", rerun::Points3D({pt}).with_colors(opaque(color)).with_radii(0.02f));
+    }
+  }
+}
+
+void clearPlanes(const std::string& viewport_name) {
+  auto& visualizer = visualizer::RerunVisualizer::getInstance();
+  visualizer.getRecordingStream().log(viewport_name, rerun::Clear(true));
+}
+
+void logPoints3D(const std::vector<Vector3T>& points, const std::string& viewport_name, const Color& color,
+                 float point_radius) {
+  if (points.empty()) {
+    return;
+  }
+
+  thread_local std::vector<rerun::Position3D> rerun_points;
+  rerun_points.clear();
+  rerun_points.reserve(points.size());
+
+  for (const auto& p : points) {
+    rerun_points.emplace_back(p.x(), p.y(), p.z());
+  }
+
+  auto& visualizer = visualizer::RerunVisualizer::getInstance();
+  visualizer.getRecordingStream().log(viewport_name,
+                                      rerun::Points3D(rerun_points).with_colors(color).with_radii(point_radius));
+}
+
+#endif  // USE_CUNLS
 
 }  // namespace cuvslam::pipelines

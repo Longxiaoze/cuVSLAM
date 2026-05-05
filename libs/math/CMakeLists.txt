@@ -37,6 +37,14 @@ set(SOURCES
 
 set(LIBS common)
 
+# Header-only cuNLS-backed factor wrappers: live alongside the rest of math because they are pure
+# math primitives (residual + Jacobian definitions), but require cunls + cuda_modules so they are
+# gated by USE_CUNLS like every other cuNLS-using artifact in the tree.
+if(USE_CUNLS)
+    set(HEADERS ${HEADERS} point_to_point_icp_factor.h point_to_plane_factor.h)
+    set(LIBS ${LIBS} cunls::cunls cuda_modules)
+endif()
+
 setup_staticlib_project(
         MODULE_NAME "${MODULE_NAME}"
         HEADERS ${HEADERS}

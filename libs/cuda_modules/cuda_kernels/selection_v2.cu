@@ -22,7 +22,7 @@
 #define GFFT_ELEMS_PER_THREAD 2
 #define GFFT_TILE_SIZE (GFTT_BLOCK_SIZE * GFFT_ELEMS_PER_THREAD)
 #define MIN_GFTT_VALUE 0.f
-#define GFTT_THRESH 1e-2
+#define GFTT_THRESH 1.9
 
 namespace cuvslam::cuda {
 

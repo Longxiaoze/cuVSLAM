@@ -33,6 +33,9 @@
 #include "odometry/stereo_inertial_odometry.h"
 #include "odometry/svo_config.h"
 #include "slam/async_slam/async_slam.h"
+#ifdef USE_CUNLS
+#include "odometry/multisensor_odometry.h"
+#endif
 
 #include "cuvslam/debug_dump.h"
 #include "cuvslam/internal.h"
@@ -265,6 +268,7 @@ void FillImageSourceAndShape(const Image& image, ImageSource& source, ImageShape
   shape.height = image.height;
 }
 
+// Validates depth images for the RGBD path: exactly one depth image is required.
 void CheckDepths(const Odometry::ImageSet& depths,
                  const std::vector<std::unique_ptr<camera::ICameraModel>>& cameras_models) {
   THROW_INVALID_ARG_IF(depths.empty(), "Depth images are required for RGBD odometry");
@@ -285,6 +289,38 @@ void CheckDepths(const Odometry::ImageSet& depths,
                          "Depth image dimensions (" + std::to_string(depths[i].width) + "x" +
                              std::to_string(depths[i].height) + ") do not correspond to camera resolution (" +
                              std::to_string(resolution[0]) + "x" + std::to_string(resolution[1]) + ")");
+  }
+}
+
+// Validates depth images for the Multisensor path: zero or more depth images, each tied to a
+// distinct camera id from `expected_depth_cam_ids` (the configured depth-camera set). Permitting
+// fewer than configured covers frame drops on individual depth streams.
+void CheckMultisensorDepths(const Odometry::ImageSet& depths, const std::vector<int32_t>& expected_depth_cam_ids,
+                            const std::vector<std::unique_ptr<camera::ICameraModel>>& cameras_models) {
+  for (size_t i = 0; i < depths.size(); ++i) {
+    THROW_INVALID_ARG_IF(depths[i].pixels == nullptr,
+                         "No buffer provided for multisensor depth image " + std::to_string(i));
+#ifdef USE_CUDA
+    THROW_INVALID_ARG_IF(depths[i].is_gpu_mem != cuda::IsGpuPointer(depths[i].pixels),
+                         "is_gpu_mem flag mismatch for multisensor depth image " + std::to_string(i));
+#endif
+    THROW_INVALID_ARG_IF(
+        depths[i].data_type != Image::DataType::UINT16 && depths[i].data_type != Image::DataType::FLOAT32,
+        "Multisensor depth data type must be UINT16 or FLOAT32");
+    THROW_INVALID_ARG_IF(depths[i].camera_index >= cameras_models.size(),
+                         "camera_index >= number of cameras for multisensor depth image " + std::to_string(i));
+    const auto& resolution = cameras_models[depths[i].camera_index]->getResolution();
+    THROW_INVALID_ARG_IF(depths[i].width != resolution[0] || depths[i].height != resolution[1],
+                         "Multisensor depth image dimensions do not match camera resolution");
+    const int32_t cam_id = static_cast<int32_t>(depths[i].camera_index);
+    THROW_INVALID_ARG_IF(
+        std::find(expected_depth_cam_ids.begin(), expected_depth_cam_ids.end(), cam_id) == expected_depth_cam_ids.end(),
+        "Multisensor depth image for camera " + std::to_string(cam_id) +
+            " was not configured in MultisensorSettings::depth_camera_ids");
+    for (size_t j = 0; j < i; ++j) {
+      THROW_INVALID_ARG_IF(depths[j].camera_index == depths[i].camera_index,
+                           "Duplicate depth image for camera " + std::to_string(cam_id));
+    }
   }
 }
 
@@ -336,6 +372,7 @@ public:
   odom::Settings svo_settings;  // construction-time settings passed to odometry components
   bool imu_fusion_enabled;
   RGBDSettings rgbd_settings;
+  MultisensorSettings multisensor_settings;
   Odometry::OdometryMode odometry_mode;
   // stats
   bool enable_final_landmarks_export{false};
@@ -391,12 +428,18 @@ Odometry::Odometry(const Rig& rig, const Config& cfg) {
                        "IMU fusion is enabled, but IMU calibration is not provided");
   THROW_INVALID_ARG_IF(rig.imus.size() > 1, "Only one IMU sensor is supported");
 
+  // For Multisensor mode, IMU presence is auto-detected from the rig (same convention as Inertial).
+  const bool multisensor_with_imu = cfg.odometry_mode == OdometryMode::Multisensor && !rig.imus.empty();
+
   odom::Settings svo_settings;
   svo_settings.verbose = Trace::GetVerbosity() > Trace::Verbosity::None;
 
   svo_settings.sba_settings.async = cfg.async_sba;
-  svo_settings.sba_settings.mode =
-      cfg.odometry_mode == OdometryMode::Inertial ? sba::Mode::InertialCPU : sba::Mode::OriginalGPU;
+  // Auto-pick SBA mode: inertial-CPU when IMU fusion is on (Inertial mode, or Multisensor with IMU),
+  // otherwise the standard GPU bundler.
+  svo_settings.sba_settings.mode = (cfg.odometry_mode == OdometryMode::Inertial || multisensor_with_imu)
+                                       ? sba::Mode::InertialCPU
+                                       : sba::Mode::OriginalGPU;
 
   // Use only first camera border settings. Other camera border settings are ignored now.
   svo_settings.sof_settings.multicam_mode = ToMulticamMode(cfg.multicam_mode);
@@ -414,15 +457,30 @@ Odometry::Odometry(const Rig& rig, const Config& cfg) {
 
   SetTrackerRigAndIntrinsics(tracker->cameras_models, tracker->rig, rig.cameras);
 
-  std::vector<CameraId> depth_ids{
-      static_cast<CameraId>(cfg.odometry_mode == OdometryMode::RGBD ? cfg.rgbd_settings.depth_camera_id : 0)};
-  tracker->fig = camera::FrustumIntersectionGraph(
-      tracker->rig, svo_settings.sof_settings.multicam_mode, depth_ids,
-      (cfg.odometry_mode == OdometryMode::RGBD) && cfg.rgbd_settings.enable_depth_stereo_tracking,
-      svo_settings.sof_settings.multicam_setup);
-  THROW_INVALID_ARG_IF(
-      !tracker->fig.is_valid(),
-      "Bad calibration. cuVSLAM needs at least one stereo pair available for multicamera/inertial modes.");
+  // Build the frustum-intersection graph. Each odometry mode contributes a different depth-camera
+  // list and stereo-depth-tracking choice; collect them up front for clarity.
+  std::vector<CameraId> depth_ids;
+  bool enable_depth_stereo_tracking_fig = false;
+  if (cfg.odometry_mode == OdometryMode::RGBD) {
+    depth_ids.push_back(static_cast<CameraId>(cfg.rgbd_settings.depth_camera_id));
+    enable_depth_stereo_tracking_fig = cfg.rgbd_settings.enable_depth_stereo_tracking;
+  } else if (cfg.odometry_mode == OdometryMode::Multisensor) {
+    depth_ids.reserve(cfg.multisensor_settings.depth_camera_ids.size());
+    for (int32_t id : cfg.multisensor_settings.depth_camera_ids) {
+      THROW_INVALID_ARG_IF(id < 0 || static_cast<size_t>(id) >= rig.cameras.size(),
+                           "MultisensorSettings::depth_camera_ids contains out-of-range camera id");
+      depth_ids.push_back(static_cast<CameraId>(id));
+    }
+    enable_depth_stereo_tracking_fig = cfg.multisensor_settings.enable_depth_stereo_tracking;
+  } else {
+    depth_ids.push_back(static_cast<CameraId>(0));
+  }
+  tracker->fig =
+      camera::FrustumIntersectionGraph(tracker->rig, svo_settings.sof_settings.multicam_mode, depth_ids,
+                                       enable_depth_stereo_tracking_fig, svo_settings.sof_settings.multicam_setup);
+  THROW_INVALID_ARG_IF(!tracker->fig.is_valid(),
+                       "Bad calibration. cuVSLAM needs at least one stereo pair available for "
+                       "multicamera/inertial/multisensor modes.");
 
   switch (cfg.odometry_mode) {
     case OdometryMode::Multicamera: {
@@ -455,6 +513,31 @@ Odometry::Odometry(const Rig& rig, const Config& cfg) {
           std::make_unique<odom::RGBDOdometry>(tracker->rig, tracker->fig, svo_settings, cfg.use_gpu);
       break;
     }
+    case OdometryMode::Multisensor: {
+#ifdef USE_CUNLS
+      tracker->multisensor_settings = cfg.multisensor_settings;
+      svo_settings.multisensor_settings.with_imu = multisensor_with_imu;
+      svo_settings.multisensor_settings.depth_camera_ids = cfg.multisensor_settings.depth_camera_ids;
+      svo_settings.multisensor_settings.depth_scale_factor = cfg.multisensor_settings.depth_scale_factor;
+      svo_settings.multisensor_settings.enable_depth_stereo_tracking =
+          cfg.multisensor_settings.enable_depth_stereo_tracking;
+      if (multisensor_with_imu) {
+        const auto& imu_calibration = rig.imus[0];
+        CheckImuCalibration(imu_calibration);
+        const Isometry3T rig_from_imu = ConvertPoseToIsometry(imu_calibration.rig_from_imu);
+        svo_settings.imu_calibration =
+            imu::ImuCalibration(rig_from_imu, imu_calibration.gyroscope_noise_density,
+                                imu_calibration.gyroscope_random_walk, imu_calibration.accelerometer_noise_density,
+                                imu_calibration.accelerometer_random_walk, imu_calibration.frequency);
+      }
+      svo_settings.use_prediction = cfg.use_motion_model;
+      tracker->visual_odometry =
+          std::make_unique<odom::MultisensorOdometry>(tracker->rig, tracker->fig, svo_settings, cfg.use_gpu);
+      break;
+#else
+      throw std::invalid_argument{"OdometryMode::Multisensor requires a build with cuNLS support (USE_CUNLS=ON)"};
+#endif
+    }
     default:
       throw std::invalid_argument{"Unsupported odometry mode " +
                                   std::to_string(ToUnderlying<Odometry::OdometryMode>(cfg.odometry_mode))};
@@ -464,16 +547,25 @@ Odometry::Odometry(const Rig& rig, const Config& cfg) {
   tracker->enable_final_landmarks_export = cfg.enable_final_landmarks_export;
 
   tracker->svo_settings = svo_settings;
-  tracker->imu_fusion_enabled = cfg.odometry_mode == OdometryMode::Inertial;
+  tracker->imu_fusion_enabled = cfg.odometry_mode == OdometryMode::Inertial || multisensor_with_imu;
   tracker->debug_dump_directory = cfg.debug_dump_directory;
   tracker->max_frame_delta_ns = static_cast<int64_t>(cfg.max_frame_delta_s * 1e9);
   tracker->odometry_mode = cfg.odometry_mode;
 
+  // Each depth-providing camera draws from the depth-capable pool, every other camera from the
+  // no-depth pool. Both pools must hold cache_size contexts per camera so the pipeline can keep
+  // the previous frame plus async pipelining slots alive while the current frame is being tracked.
+  const size_t cache_size = 4;
+  size_t num_depth_cams = 0;
+  if (cfg.odometry_mode == OdometryMode::RGBD) {
+    num_depth_cams = 1;
+  } else if (cfg.odometry_mode == OdometryMode::Multisensor) {
+    num_depth_cams = cfg.multisensor_settings.depth_camera_ids.size();
+  }
+  const size_t num_no_depth_cams = rig.cameras.size() - num_depth_cams;
   tracker->image_manager = std::make_unique<sof::ImageManager>();
   ImageShape shape{rig.cameras[0].size[0], rig.cameras[0].size[1]};
-  const size_t cache_size = 4;
-  tracker->image_manager->init(shape, rig.cameras.size() * cache_size, cfg.use_gpu,
-                               cfg.odometry_mode == OdometryMode::RGBD ? cache_size : 0);
+  tracker->image_manager->init(shape, num_no_depth_cams * cache_size, cfg.use_gpu, num_depth_cams * cache_size);
 
   impl = std::move(tracker);
 
@@ -492,7 +584,15 @@ void Odometry::RegisterImuMeasurement(uint32_t sensor_index, const ImuMeasuremen
   Vector3T gyro(imu.angular_velocities[0], imu.angular_velocities[1], imu.angular_velocities[2]);
 
   const imu::ImuMeasurement m = {imu.timestamp_ns, acc, gyro};
-  static_cast<odom::StereoInertialOdometry*>(impl->visual_odometry.get())->add_imu_measurement(m);
+  if (impl->odometry_mode == OdometryMode::Inertial) {
+    static_cast<odom::StereoInertialOdometry*>(impl->visual_odometry.get())->add_imu_measurement(m);
+  } else {
+#ifdef USE_CUNLS
+    static_cast<odom::MultisensorOdometry*>(impl->visual_odometry.get())->add_imu_measurement(m);
+#else
+    throw std::invalid_argument{"Multisensor IMU fusion requires a build with USE_CUNLS"};
+#endif
+  }
 }
 
 PoseEstimate Odometry::Track(const ImageSet& images, const ImageSet& masks, const ImageSet& depths,
@@ -504,8 +604,10 @@ PoseEstimate Odometry::Track(const ImageSet& images, const ImageSet& masks, cons
   CheckImages(images, impl->frame_sync_threshold_ns, impl->cameras_models);
   if (impl->odometry_mode == OdometryMode::RGBD) {
     CheckDepths(depths, impl->cameras_models);
+  } else if (impl->odometry_mode == OdometryMode::Multisensor) {
+    CheckMultisensorDepths(depths, impl->multisensor_settings.depth_camera_ids, impl->cameras_models);
   } else {
-    THROW_INVALID_ARG_IF(!depths.empty(), "Depth images are only accepted for RGBD odometry");
+    THROW_INVALID_ARG_IF(!depths.empty(), "Depth images are only accepted for RGBD or Multisensor odometry");
   }
   DumpTrackCall(impl->debug_dump_directory, impl->frame_id, images, masks, depths);
 
@@ -551,12 +653,24 @@ PoseEstimate Odometry::Track(const ImageSet& images, const ImageSet& masks, cons
       FillImageSourceAndShape(*mask_it, mask_source, meta.mask_shape);
     }
 
-    // At this point, we know there is only one depth image for RGBD odometry
+    // RGBD: exactly one depth image (validated in CheckDepths) → match it to its camera id.
     if (impl->odometry_mode == OdometryMode::RGBD && depths[0].camera_index == cam_id) {
       auto& depth_source = depth_sources[cam_id];
       FillImageSourceAndShape(depths[0], depth_source, meta.shape);
       meta.pixel_scale_factor = impl->rgbd_settings.depth_scale_factor;
       is_rgbd = true;
+    }
+    // Multisensor: any of the supplied depth images can match this camera id (multi-RGBD rigs).
+    if (impl->odometry_mode == OdometryMode::Multisensor) {
+      for (const auto& depth : depths) {
+        if (depth.camera_index == cam_id) {
+          auto& depth_source = depth_sources[cam_id];
+          FillImageSourceAndShape(depth, depth_source, meta.shape);
+          meta.pixel_scale_factor = impl->multisensor_settings.depth_scale_factor;
+          is_rgbd = true;
+          break;
+        }
+      }
     }
 
     sof::ImageContextPtr ptr = is_rgbd ? impl->image_manager->acquire_with_depth() : impl->image_manager->acquire();
@@ -624,7 +738,14 @@ std::vector<Landmark> Odometry::GetLastLandmarks() const {
 std::optional<Odometry::Gravity> Odometry::GetLastGravity() const {
   THROW_INVALID_ARG_IF(!impl->imu_fusion_enabled, "IMU fusion is disabled");
 
-  const auto& gravity_estimate = static_cast<odom::StereoInertialOdometry*>(impl->visual_odometry.get())->get_gravity();
+  std::optional<Vector3T> gravity_estimate;
+  if (impl->odometry_mode == OdometryMode::Inertial) {
+    gravity_estimate = static_cast<odom::StereoInertialOdometry*>(impl->visual_odometry.get())->get_gravity();
+  } else {
+#ifdef USE_CUNLS
+    gravity_estimate = static_cast<odom::MultisensorOdometry*>(impl->visual_odometry.get())->get_gravity();
+#endif
+  }
   if (!gravity_estimate.has_value()) {
     return std::nullopt;  // Gravity is not available yet
   }
@@ -636,15 +757,26 @@ std::optional<Odometry::Gravity> Odometry::GetLastGravity() const {
 std::optional<Odometry::ImuState> Odometry::GetImuState() const {
   THROW_INVALID_ARG_IF(!impl->imu_fusion_enabled, "IMU fusion is disabled");
 
-  const auto s = static_cast<odom::StereoInertialOdometry*>(impl->visual_odometry.get())->GetImuState();
+  if (impl->odometry_mode == OdometryMode::Inertial) {
+    const auto s = static_cast<odom::StereoInertialOdometry*>(impl->visual_odometry.get())->GetImuState();
+    if (!s.has_value()) return std::nullopt;
+    return ImuState{
+        {s->velocity.x(), s->velocity.y(), s->velocity.z()},
+        {s->gyro_bias.x(), s->gyro_bias.y(), s->gyro_bias.z()},
+        {s->acc_bias.x(), s->acc_bias.y(), s->acc_bias.z()},
+    };
+  }
+#ifdef USE_CUNLS
+  const auto s = static_cast<odom::MultisensorOdometry*>(impl->visual_odometry.get())->GetImuState();
   if (!s.has_value()) return std::nullopt;
-
-  // Internal coordinate system is now OpenCV — no conversion needed.
   return ImuState{
       {s->velocity.x(), s->velocity.y(), s->velocity.z()},
       {s->gyro_bias.x(), s->gyro_bias.y(), s->gyro_bias.z()},
       {s->acc_bias.x(), s->acc_bias.y(), s->acc_bias.z()},
   };
+#else
+  return std::nullopt;
+#endif
 }
 
 void Odometry::GetState(Odometry::State& state) const {

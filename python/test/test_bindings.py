@@ -456,6 +456,48 @@ class TestBindings(unittest.TestCase):
         self.assertEqual(cfg.rgbd_settings.depth_camera_id, 0)
         self.assertTrue(cfg.rgbd_settings.enable_depth_stereo_tracking)
 
+    def test_multisensor_settings_default(self):
+        s = vslam.Tracker.OdometryMultisensorSettings()
+        self.assertEqual(list(s.depth_camera_ids), [])
+        self.assertEqual(s.depth_scale_factor, 1.0)
+        self.assertFalse(s.enable_depth_stereo_tracking)
+
+    def test_multisensor_settings_constructor(self):
+        s = vslam.Tracker.OdometryMultisensorSettings(
+            depth_camera_ids=[0, 2],
+            depth_scale_factor=5000.0,
+            enable_depth_stereo_tracking=True,
+        )
+        self.assertEqual(list(s.depth_camera_ids), [0, 2])
+        self.assertEqual(s.depth_scale_factor, 5000.0)
+        self.assertTrue(s.enable_depth_stereo_tracking)
+
+        # kw_only
+        with self.assertRaises(TypeError):
+            vslam.Tracker.OdometryMultisensorSettings([0], 1.0, False)  # type: ignore
+
+    def test_multisensor_settings_assignment(self):
+        s = vslam.Tracker.OdometryMultisensorSettings()
+        s.depth_camera_ids = [1, 3]
+        s.depth_scale_factor = 1000.0
+        s.enable_depth_stereo_tracking = True
+        self.assertEqual(list(s.depth_camera_ids), [1, 3])
+        self.assertEqual(s.depth_scale_factor, 1000.0)
+        self.assertTrue(s.enable_depth_stereo_tracking)
+
+    def test_multisensor_mode_in_enum(self):
+        # The Multisensor odometry mode must be exposed and selectable.
+        self.assertTrue(hasattr(vslam.Tracker.OdometryMode, 'Multisensor'))
+        cfg = vslam.Tracker.OdometryConfig(
+            odometry_mode=vslam.Tracker.OdometryMode.Multisensor,
+            multisensor_settings=vslam.Tracker.OdometryMultisensorSettings(
+                depth_camera_ids=[0, 1], depth_scale_factor=2.0,
+                enable_depth_stereo_tracking=True))
+        self.assertEqual(cfg.odometry_mode, vslam.Tracker.OdometryMode.Multisensor)
+        self.assertEqual(list(cfg.multisensor_settings.depth_camera_ids), [0, 1])
+        self.assertEqual(cfg.multisensor_settings.depth_scale_factor, 2.0)
+        self.assertTrue(cfg.multisensor_settings.enable_depth_stereo_tracking)
+
     def test_set_verbosity(self):
         # Smoke test — should not raise
         vslam.set_verbosity(0)

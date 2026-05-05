@@ -26,6 +26,9 @@ set(SOURCES
     sba_v1.cu
     sba_imu_v1.cu
     window_matcher.cu
+    photometric_kernel.cu
+    point_to_point_icp_kernel.cu
+    plane_detection_kernel.cu
     )
 
 add_library(cuda_kernels STATIC ${SOURCES})

@@ -35,6 +35,7 @@ class Tracker:
     MulticameraMode = Odometry.MulticameraMode
     OdometryConfig = Odometry.Config
     OdometryRGBDSettings = Odometry.RGBDSettings
+    OdometryMultisensorSettings = Odometry.MultisensorSettings
     TrackOptions = Odometry.TrackOptions
 
     SlamConfig = Slam.Config
@@ -131,7 +132,7 @@ class Tracker:
         """
         Register an IMU measurement with the tracker.
 
-        Requires Inertial odometry mode.
+        Requires Inertial odometry mode, or Multisensor odometry mode with an IMU configured in the rig.
 
         If visual odometry loses camera position, it briefly continues execution
         using user-provided IMU measurements while trying to recover the position.
@@ -179,7 +180,7 @@ class Tracker:
         Get gravity acceleration (m/s²) in the rig / VO frame; +Y is down (OpenCV), so the vector is
         approximately ``[0, +g, 0]`` when the rig is upright.
         Returns `None` if gravity is not yet available.
-        Requires Inertial mode (`odometry_mode=OdometryMode.Inertial` in :class:`OdometryConfig`)
+        Requires Inertial mode, or Multisensor mode with an IMU configured in the rig.
         """
         return self.odom.get_last_gravity()
 

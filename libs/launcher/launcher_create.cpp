@@ -25,8 +25,11 @@
 #include "launcher/multi_camera_launcher.h"
 #include "launcher/rgbd_camera_launcher.h"
 #include "launcher/visual_inertial_launcher.h"
+#ifdef USE_CUNLS
+#include "launcher/multisensor_camera_launcher.h"
+#endif
 
-DEFINE_string(mode, "multicamera", "Choose from, 'mono', 'multicamera', 'inertial', 'rgbd'");
+DEFINE_string(mode, "multicamera", "Choose from, 'mono', 'multicamera', 'inertial', 'rgbd', 'multisensor'");
 
 namespace cuvslam::launcher {
 
@@ -44,6 +47,12 @@ std::unique_ptr<BaseLauncher> CreateLauncher(ICameraRig& rig, const odom::Settin
     return std::make_unique<RGBDCameraLauncher>(rig, svo_settings);
 #else
     throw std::invalid_argument{"Unsupported mode. The rgbd mode requires build with cuda support."};
+#endif
+  } else if (FLAGS_mode == "multisensor") {
+#ifdef USE_CUNLS
+    return std::make_unique<MultisensorCameraLauncher>(rig, svo_settings);
+#else
+    throw std::invalid_argument{"Unsupported mode. The multisensor mode requires build with USE_CUDA and USE_CUNLS."};
 #endif
   }
   throw std::invalid_argument{"Unsupported mode."};

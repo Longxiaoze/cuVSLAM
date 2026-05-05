@@ -30,6 +30,9 @@
 #include "common/vector_2t.h"
 #include "common/vector_3t.h"
 #include "pipelines/track.h"
+#ifdef USE_CUNLS
+#include "map/plane_map.h"
+#endif
 
 #include "visualizer/visualizer.hpp"
 
@@ -92,6 +95,39 @@ void logTrajectory(const Isometry3T& rig_from_world, const std::string& viewport
  * @param trajectory_type Type of trajectory to clear (VO, SBA, or GT)
  */
 void clearTrajectory(const std::string& viewport_name, TrajectoryType trajectory_type);
+
+/**
+ * Log camera frustum wireframes for all cameras in the rig.
+ * Each camera gets a distinct color. The frustum is drawn as 8 line segments:
+ * 4 edges from the camera origin to the near-plane corners, and 4 edges
+ * forming the near-plane rectangle.
+ * @param rig The camera rig with intrinsics and extrinsics
+ * @param world_from_rig Transform from rig frame to world frame
+ * @param viewport_name Rerun viewport name prefix (e.g. "world/frustums")
+ * @param frustum_depth How far (in meters) the frustum extends along the optical axis
+ */
+void logCameraFrustums(const camera::Rig& rig, const Isometry3T& world_from_rig, const std::string& viewport_name,
+                       float frustum_depth = 0.3f);
+
+/**
+ * Log a 3D vector as an arrow anchored at a given world-frame origin.
+ * Useful for visualizing per-frame quantities like IMU gravity and velocity.
+ * @param vec    The 3D vector (will be drawn at its true magnitude unless `scale` is provided).
+ * @param origin World-frame origin of the arrow.
+ * @param viewport_name Rerun viewport name (e.g. "world/imu/gravity").
+ * @param color  Color of the arrow.
+ * @param scale  Optional length multiplier; defaults to 1.0 (vector drawn at its true magnitude).
+ */
+void logVector3D(const Vector3T& vec, const Vector3T& origin, const std::string& viewport_name, const Color& color,
+                 float scale = 1.0f);
+
+#ifdef USE_CUNLS
+void logPlanes(const std::vector<map::Plane>& planes, const std::string& viewport_name);
+void clearPlanes(const std::string& viewport_name);
+
+void logPoints3D(const std::vector<Vector3T>& points, const std::string& viewport_name, const Color& color,
+                 float point_radius = 0.01f);
+#endif
 
 }  // namespace cuvslam::pipelines
 #endif

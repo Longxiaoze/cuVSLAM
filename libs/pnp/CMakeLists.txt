@@ -39,6 +39,17 @@ if(USE_CUDA)
     set(LIBS ${LIBS} cuda_modules)
 endif()
 
+if(USE_CUNLS)
+    enable_language(CUDA)
+    set(HEADERS ${HEADERS} multisensor_pose_estimator.h)
+    set(SOURCES ${SOURCES} multisensor_pose_estimator.cpp)
+    set_source_files_properties(multisensor_pose_estimator.cpp PROPERTIES LANGUAGE CUDA)
+    # PlaneMap / DepthPointMap / DepthCameraInfo / Plane now live in libs/map/ (under USE_CUNLS),
+    # but multisensor_pose_estimator.h still references map::Plane in its public API and the
+    # solver pulls in map/plane_map.h, so the pnp lib gains a map dep on this branch.
+    set(LIBS ${LIBS} cunls::cunls cuda_modules imu map)
+endif()
+
 if(USE_RERUN)
     set(HEADERS ${HEADERS} visualizer.h)
     set(SOURCES ${SOURCES} visualizer.cpp)
@@ -51,3 +62,5 @@ setup_staticlib_project(
         SOURCES ${SOURCES}
         LIBRARIES ${LIBS}
 )
+
+add_subdirectory(test)

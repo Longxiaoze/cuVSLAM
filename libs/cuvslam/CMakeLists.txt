@@ -56,6 +56,10 @@ if(USE_CUDA)
     set(LIBS ${LIBS} cuda_modules)
 endif()
 
+if(USE_CUNLS)
+    set(LIBS ${LIBS} cunls::cunls)
+endif()
+
 if(USE_RERUN)
     set(LIBS ${LIBS} visualizer)
 endif()

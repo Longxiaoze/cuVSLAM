@@ -145,6 +145,16 @@ make -j
       ```
    2. Update SRC & DST paths in `build_release.sh`
 
+### Optional: cuNLS
+
+To build with optional **cuNLS** (CUDA nonlinear least squares), install a **static** cuNLS package whose prefix contains `include/` and `lib/libcunls.a`, then configure with:
+
+```bash
+cmake .. -DUSE_CUNLS=ON -DCUVSLAM_CUNLS_ROOT=/path/to/cunls/install
+```
+
+`USE_CUDA` must be `ON`. This sets the `USE_CUNLS` compile definition and links `libcunls.a` into `libcuvslam`; use a cuNLS build where dependencies such as spdlog and cuDSS are already incorporated into the static library so no extra packages are required beyond the CUDA Toolkit.
+
 ### Build on Jetson (aarch64)
 
 JetPack only ships CUDA runtime libraries by default. Install the dev packages on the Jetson before building:

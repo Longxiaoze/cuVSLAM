@@ -26,6 +26,13 @@ set(LIBS
     log
 )
 
+if(USE_CUNLS)
+    enable_language(CUDA)
+    list(APPEND SOURCES cunls_smoke_test.cpp)
+    set_source_files_properties(cunls_smoke_test.cpp PROPERTIES LANGUAGE CUDA)
+    list(APPEND LIBS cunls::cunls)
+endif()
+
 setup_test_project(
     MODULE_NAME ${MODULE_NAME}
     SOURCES ${SOURCES}

@@ -386,7 +386,7 @@ SolverSfMInertial::SolverSfMInertial(map::UnifiedMap& map, const camera::Rig& ri
     }
     return false;
   };
-  imu_sm_.register_gravity_estimation_callback(gravity_estimation_callback);
+  imu_sm_.set_gravity_init_fn(gravity_estimation_callback);
 }
 
 // OUT: pose, prev_pose - updated poses if success, otherwise it's guaranteed to be unchanged
@@ -516,7 +516,7 @@ bool SolverSfMInertial::solveNextFrame(int64_t time_ns, const sof::FrameState& f
   if (disable_fusion_except_gravity_ && rig_.num_cameras > 2) {
     imu_state = StateMachine::State::Uninitialized;
   } else {
-    imu_state = imu_sm_.get_state();
+    imu_state = imu_sm_.state();
   }
 
   world_from_rig = prev_pose.w_from_imu * imu_from_rig;
@@ -599,8 +599,14 @@ bool SolverSfMInertial::solveNextFrame(int64_t time_ns, const sof::FrameState& f
   {
     TRACE_EVENT ev2 = profiler_domain_.trace_event("update_frame_state");
     bool is_keyframe = frameState == sof::FrameState::Key;
-    imu_sm_.update_frame_state(is_keyframe, pnp_result && no_drops, time_ns,
-                               solver_settings.sm);  // estimates gravity and biases through callback
+    StateMachine::Event event;
+    if (!no_drops) {
+      event = StateMachine::Event::FrameDropped;
+    } else {
+      event = pnp_result ? StateMachine::Event::FrameOk : StateMachine::Event::FrameFailed;
+    }
+    imu_sm_.on_event(event, time_ns, is_keyframe,
+                     solver_settings.sm);  // estimates gravity and biases through callback
   }
 
   if (pnp_result && imu_state == StateMachine::State::Ok) {
