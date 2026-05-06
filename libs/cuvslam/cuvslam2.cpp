@@ -909,6 +909,7 @@ public:
     options.max_landmarks_distance = config.max_landmarks_distance;
     options.planar_constraints = config.planar_constraints;
     options.throttling_time_ms = config.throttling_time_ms;
+    options.retention_time_ms = config.retention_time_ms;
     use_gpu_ = config.use_gpu;
     gt_align_mode_ = config.gt_align_mode;
     if (config.gt_align_mode) {

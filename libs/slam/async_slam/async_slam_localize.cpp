@@ -109,6 +109,7 @@ void AsyncSlam::LocalizeInMapCmd::Execute(AsyncSlam& async_slam, FrameId, const 
   if (start_cb_) {
     start_cb_();
   }
+
   LocalizerOptions options;
   {
     options.use_gpu = async_slam.options_.use_gpu;
@@ -148,9 +149,12 @@ void AsyncSlam::LocalizeInMapCmd::Execute(AsyncSlam& async_slam, FrameId, const 
   result.slam_from->RebuildSpatialIndex();
   result.slam_from->ReduceKeyframes();
 
-  std::swap(async_slam.slam_, result.slam_from);
+  CALLBACK_AND_RETURN_IF(!async_slam.tail_.UpdatePoseBySLAM(timestamp_ns_, result.pose_in_slam), finish_cb_, Pose,
+                         "Localization timestamp is outside the SLAM retention window. LocalizeInMap can initialize "
+                         "an empty SLAM state, but once SLAM has retained poses the timestamp must be within that "
+                         "window.");
 
-  async_slam.tail_.UpdatePoseBySLAM(timestamp_ns_, result.pose_in_slam);
+  std::swap(async_slam.slam_, result.slam_from);
   AddFakeKeyframeForLocalizedPose(*async_slam.slam_, result.from_keyframe_id, result.pose_in_slam, timestamp_ns_,
                                   images_, FrameInformationString(images_));
   AddFakeKeyframeForLastTailPose(*async_slam.slam_, async_slam.tail_);

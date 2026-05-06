@@ -17,8 +17,11 @@
 
 #pragma once
 
+#include <cstdint>
+#include <limits>
 #include <list>
 #include <mutex>
+#include <optional>
 #include <utility>
 
 #include "common/isometry.h"
@@ -35,20 +38,27 @@ namespace cuvslam::slam {
 // All posses in world space
 class Tail {
 public:
+  explicit Tail(uint64_t retention_time_ns = std::numeric_limits<uint64_t>::max());
   void Clear();
 
   // called from both threads
   std::optional<std::pair<int64_t, Isometry3T>> GetTip() const;
+  [[nodiscard]] bool IsTimestampRetained(int64_t timestamp_ns) const;
 
   // timestamp_ns can't be in past
   [[nodiscard]] bool UpdateTimeByOdometry(int64_t timestamp_ns, const Isometry3T& pose);
   // called from slam thread when LC or LoadMap. timestamp_ns can be in past
-  void UpdatePoseBySLAM(int64_t timestamp_ns, const Isometry3T& pose);
+  [[nodiscard]] bool UpdatePoseBySLAM(int64_t timestamp_ns, const Isometry3T& pose);
 
 private:
-  // first - timestamp us
+  [[nodiscard]] int64_t OldestAllowedTimestamp() const;
+  [[nodiscard]] bool TimestampIsRetained(int64_t timestamp_ns) const;
+  void PruneOldTail();
+
+  // first - timestamp ns
   // second - pose in world space
   std::list<std::pair<int64_t, Isometry3T>> tail_;  // updates from main and slam thread see @tail_guard_
+  uint64_t retention_time_ns_;
   mutable std::mutex tail_guard_;
 };
 

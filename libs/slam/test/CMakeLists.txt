@@ -23,6 +23,7 @@ set(SOURCES
     pnp_ransac_test.cpp
     rigid_transform_3d_test.cpp
     slam_test.cpp
+    tail_test.cpp
     thread_safe_queue_test.cpp
     )
 

@@ -69,7 +69,8 @@ namespace cuvslam::slam {
 AsyncSlam::AsyncSlam(const camera::Rig& rig, const std::vector<CameraId>& cameras, const AsyncSlamOptions& options)
     : rig_(rig),
       cameras_(cameras),
-      slam_(std::make_unique<LocalizerAndMapper>(rig, FeatureDescriptorType::kShiTomasi6, options.use_gpu)) {
+      slam_(std::make_unique<LocalizerAndMapper>(rig, FeatureDescriptorType::kShiTomasi6, options.use_gpu)),
+      tail_(options.retention_time_ms * 1'000'000ULL) {
   reproduce_mode_ = options.reproduce_mode;
 
   // no second thread here - safe access to all data
@@ -501,7 +502,10 @@ void AsyncSlam::ProcessInput() {
         int64_t last_keyframe_ts;
         Isometry3T last_keyframe_pose;
         if (slam_->GetLastKeyframePoseAndTimestamp(last_keyframe_pose, last_keyframe_ts)) {
-          tail_.UpdatePoseBySLAM(last_keyframe_ts, last_keyframe_pose);
+          if (!tail_.UpdatePoseBySLAM(last_keyframe_ts, last_keyframe_pose)) {
+            TraceWarning(
+                "Failed to update SLAM tail after pose graph optimization: keyframe timestamp is outside retention.");
+          }
         }
 
         SlamStdout(":");

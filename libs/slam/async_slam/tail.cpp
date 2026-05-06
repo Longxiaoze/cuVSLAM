@@ -19,6 +19,8 @@
 
 namespace cuvslam::slam {
 
+Tail::Tail(uint64_t retention_time_ns) : retention_time_ns_(retention_time_ns) {}
+
 std::optional<std::pair<int64_t, Isometry3T>> Tail::GetTip() const {
   std::lock_guard locker(tail_guard_);
 
@@ -26,6 +28,11 @@ std::optional<std::pair<int64_t, Isometry3T>> Tail::GetTip() const {
     return {};
   }
   return tail_.back();
+}
+
+bool Tail::IsTimestampRetained(int64_t timestamp_ns) const {
+  std::lock_guard locker(tail_guard_);
+  return TimestampIsRetained(timestamp_ns);
 }
 
 bool Tail::UpdateTimeByOdometry(int64_t timestamp_ns, const Isometry3T& pose) {
@@ -38,6 +45,7 @@ bool Tail::UpdateTimeByOdometry(int64_t timestamp_ns, const Isometry3T& pose) {
     }
   }
   tail_.emplace_back(timestamp_ns, pose);
+  PruneOldTail();
   return true;
 }
 
@@ -47,14 +55,19 @@ void Tail::Clear() {
 }
 
 // called from slam thread
-void Tail::UpdatePoseBySLAM(int64_t timestamp_ns, const Isometry3T& pose) {
+bool Tail::UpdatePoseBySLAM(int64_t timestamp_ns, const Isometry3T& pose) {
   std::lock_guard locker(tail_guard_);
+
+  if (!TimestampIsRetained(timestamp_ns)) {
+    TraceWarning("Ignore SLAM pose update outside the retention window.");
+    return false;
+  }
 
   if (tail_.empty() || tail_.back().first < timestamp_ns) {
     // SLAM has the latest known pose. For example if user load map with timestamp in future
     tail_.clear();
     tail_.emplace_back(timestamp_ns, pose);
-    return;
+    return true;
   }
   // else SLAM updates Tail in the past
 
@@ -65,7 +78,7 @@ void Tail::UpdatePoseBySLAM(int64_t timestamp_ns, const Isometry3T& pose) {
   const Isometry3T& old_pose = it->second;
 
   if (old_pose.isApprox(pose, 0.01f)) {  // neither pose should have scale
-    return;
+    return true;
   }
 
   const Isometry3T delta = old_pose.inverse() * pose;
@@ -74,6 +87,37 @@ void Tail::UpdatePoseBySLAM(int64_t timestamp_ns, const Isometry3T& pose) {
     RemoveScaleFromTransform(updated);  // remove scale caused by floating-point errors
     it->second = updated;
     ++it;
+  }
+  return true;
+}
+
+int64_t Tail::OldestAllowedTimestamp() const {
+  if (tail_.empty() || retention_time_ns_ > static_cast<uint64_t>(std::numeric_limits<int64_t>::max())) {
+    return std::numeric_limits<int64_t>::min();
+  }
+
+  const int64_t latest_timestamp_ns = tail_.back().first;
+  const auto retention_time_ns = static_cast<int64_t>(retention_time_ns_);
+  if (latest_timestamp_ns < std::numeric_limits<int64_t>::min() + retention_time_ns) {
+    return std::numeric_limits<int64_t>::min();
+  }
+  return latest_timestamp_ns - retention_time_ns;
+}
+
+bool Tail::TimestampIsRetained(int64_t timestamp_ns) const {
+  if (tail_.empty()) {
+    return true;
+  }
+  if (timestamp_ns >= tail_.back().first) {
+    return true;
+  }
+  return timestamp_ns >= OldestAllowedTimestamp();
+}
+
+void Tail::PruneOldTail() {
+  const int64_t oldest_allowed_timestamp_ns = OldestAllowedTimestamp();
+  while (tail_.size() > 1 && tail_.front().first < oldest_allowed_timestamp_ns) {
+    tail_.pop_front();
   }
 }
 
