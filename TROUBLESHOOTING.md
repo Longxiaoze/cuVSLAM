@@ -375,11 +375,50 @@ See [Isaac ROS cuVSLAM parameters][].
 
 ### Improve input images
 
-1. Find optimal resolution/fps.
-2. Find optimal brightness/contrast/gamma.
-3. Enable or disable autoexpose.
-4. Pick the least noisy channel if you have a color image.
-5. Try to enable or disable `use_denoising` parameter.
+1. Find the best resolution and FPS for your motion.
+   Start with VGA (640x480) at 100 FPS if the camera and processing pipeline can sustain it without dropping frames.
+   VGA is usually enough for most cases. Higher FPS usually helps more than higher resolution when the camera or robot
+   moves quickly, because adjacent frames have smaller pixel displacement and less motion blur. Higher resolution can
+   help in distant or low-texture scenes because it preserves more usable features. Test both on the same short,
+   repeatable recording.
+
+   Check which camera modes are native sensor readouts and which modes are resized from a native sensor resolution.
+   Resized modes behave like an image filter: they can sometimes improve tracking quality by smoothing noise or aliasing,
+   but they can also blur corners and remove details that cuVSLAM could otherwise track. Treat each non-native resolution
+   as a separate image-processing mode and validate it instead of assuming that lower resolution is only a cheaper
+   version of the same image.
+
+   To compare modes:
+   1. Start from the camera mode that can deliver frames without drops.
+   2. Run the same sequence at several resolutions and frame rates.
+   3. Compare tracking loss, drift against ground truth or a known path, number and distribution of observations in the
+      debug view, CPU/GPU load, and any dropped-frame messages. If ground truth is not available, estimate drift with a
+      repeated forward/backward recording, also known as [shuttle mode](#shuttle-mode-debug-approach).
+   4. Prefer the lowest resolution that still gives stable, well-distributed features, and the highest FPS that your
+      capture and processing pipeline can sustain without dropping frames.
+   5. If you resize or crop images, make sure the intrinsics match the resized or cropped image.
+2. Find good brightness, contrast, and gamma settings.
+   Good settings for cuVSLAM are usually the same settings a person would choose when looking at the image. If the image
+   looks too dark, make it brighter. If texture is washed out, reduce exposure or contrast. Inspect the grayscale images
+   that cuVSLAM actually receives, not only the camera preview. Avoid clipped highlights, crushed shadows, aggressive
+   sharpening, and strong gamma correction. A good image should preserve corners and texture in both bright and dark
+   regions. Use the same image-processing path during testing and deployment so tuning results remain comparable.
+3. Decide whether to use auto exposure.
+   After the camera has been adjusted for the scene, first try fixed exposure and gain. Slow brightness changes are
+   usually acceptable, but flashing lights or abrupt exposure jumps can break tracking. If auto exposure is required,
+   limit its range where possible, let it settle before recording, and inspect the sequence for exposure "pumping."
+4. Avoid compression and image-processing artifacts.
+   Prefer raw or lossless image streams for troubleshooting. MJPEG, H.264, low bitrate recording, debayering artifacts,
+   temporal denoising, and excessive sharpening can create unstable features that are easy to miss in a normal video
+   player. Inspect the exact recorded frames frame by frame.
+5. Pick the least noisy channel if you have a color image.
+   cuVSLAM tracks grayscale features. If your camera or wrapper allows selecting the grayscale source, compare the
+   individual color channels on the same recording. Pick the channel with the best combination of sharp texture, low
+   noise, and low compression artifacts; do not assume that the default RGB-to-grayscale conversion is optimal.
+6. Try to enable or disable the `use_denoising` parameter.
+   Denoising can help with noisy low-light images, but it can also blur small features and increase processing cost.
+   Compare tracking with denoising enabled and disabled on the same recording, and use the debug visualization to verify
+   that useful observations become more stable rather than simply fewer.
 
 **C++ API**
 
