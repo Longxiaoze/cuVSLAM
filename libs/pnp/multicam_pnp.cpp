@@ -72,9 +72,9 @@ Mat23 projection_jacobian(const Vector3T& point_3d) {
 }
 }  // namespace
 
-PNPSolver::PNPSolver(const camera::Rig& rig, const PNPSettings& settings) : rig_(rig), settings_(settings) {}
+PNPSolver::PNPSolver(const camera::Rig& rig) : rig_(rig) {}
 
-float PNPSolver::evaluate_cost(const Isometry3T& rig_from_world) const {
+float PNPSolver::evaluate_cost(const Isometry3T& rig_from_world, const PNPSettings& settings) const {
   float cost = 0;
 
   std::vector<Isometry3T> cam_from_w;
@@ -94,7 +94,7 @@ float PNPSolver::evaluate_cost(const Isometry3T& rig_from_world) const {
 
     point_cam = Tcam_from_w * point_w;
 
-    if (point_cam.z() <= settings_.point_z_thresh) continue;
+    if (point_cam.z() <= settings.point_z_thresh) continue;
 
     count++;
 
@@ -102,7 +102,7 @@ float PNPSolver::evaluate_cost(const Isometry3T& rig_from_world) const {
     Vector2T r = point_cam.topRows(2) * one_over_z - obs.xy;
     float r_squared_norm = r.dot(obs.xy_info * r);
 
-    cost += math::ComputeHuberLoss(r_squared_norm, settings_.huber);
+    cost += math::ComputeHuberLoss(r_squared_norm, settings.huber);
   }
 
   if (count <= 0) {
@@ -111,7 +111,8 @@ float PNPSolver::evaluate_cost(const Isometry3T& rig_from_world) const {
   return cost / count;
 }
 
-void PNPSolver::build_hessian(const Isometry3T& rig_from_world, Matrix6T& H, Vector6T& rhs) const {
+void PNPSolver::build_hessian(const Isometry3T& rig_from_world, Matrix6T& H, Vector6T& rhs,
+                              const PNPSettings& settings) const {
   H.setZero();
   rhs.setZero();
 
@@ -131,7 +132,7 @@ void PNPSolver::build_hessian(const Isometry3T& rig_from_world, Matrix6T& H, Vec
 
     point_cam = Tcam_from_w * point_w;
 
-    if (point_cam.z() <= settings_.point_z_thresh) continue;
+    if (point_cam.z() <= settings.point_z_thresh) continue;
     count++;
 
     float one_over_z = 1.f / point_cam.z();
@@ -139,7 +140,7 @@ void PNPSolver::build_hessian(const Isometry3T& rig_from_world, Matrix6T& H, Vec
     Vector2T r = point_cam.topRows(2) * one_over_z - obs.xy;
     float r_squared_norm = r.dot(obs.xy_info * r);
 
-    float w = math::ComputeDHuberLoss(r_squared_norm, settings_.huber);
+    float w = math::ComputeDHuberLoss(r_squared_norm, settings.huber);
     Mat26 J = projection_jacobian(point_cam) * Tcam_from_w.linear() * point_jacobian(point_w);
 
     H += J.transpose() * obs.xy_info * w * J;
@@ -156,12 +157,18 @@ using obs_ref = std::reference_wrapper<const camera::Observation>;
 
 bool PNPSolver::solve(Isometry3T& rig_from_world, Matrix6T& static_info_exp,
                       const std::vector<camera::Observation>& observations,
-                      const std::unordered_map<TrackId, Vector3T>& landmarks) const {
+                      const std::unordered_map<TrackId, Vector3T>& landmarks, const PNPSettings& settings) const {
   TRACE_EVENT ev = profiler_domain_.trace_event("solve");
 
-  if (observations.size() < settings_.min_observations) {
-    TraceMessageIf(settings_.verbose, "Num observation = {%d} is less then min (%d)", observations.size(),
-                   settings_.min_observations);
+  if (settings.max_iteration < 0 || settings.max_obs_per_camera < 0 || settings.min_observations < 0) {
+    TraceError("PNPSettings count fields must be non-negative");
+    return false;
+  }
+
+  const size_t min_observations = static_cast<size_t>(settings.min_observations);
+  if (observations.size() < min_observations) {
+    TraceMessageIf(settings.verbose, "Num observation = {%d} is less then min (%d)",
+                   static_cast<int>(observations.size()), settings.min_observations);
     return false;
   }
 
@@ -184,11 +191,11 @@ bool PNPSolver::solve(Isometry3T& rig_from_world, Matrix6T& static_info_exp,
     }
 
     for (auto& obs_vec : obs_per_camera) {
-      if (settings_.filter_new_observations) {
+      if (settings.filter_new_observations) {
         std::sort(obs_vec.begin(), obs_vec.end(),
                   [](const obs_ref& lhs, const obs_ref& rhs) { return lhs.get().id < rhs.get().id; });
 
-        const int num_pnp_tracks = std::min(settings_.max_obs_per_camera, obs_vec.size());
+        const size_t num_pnp_tracks = std::min(static_cast<size_t>(settings.max_obs_per_camera), obs_vec.size());
         obs_vec.erase(obs_vec.begin() + num_pnp_tracks, obs_vec.end());
       }
 
@@ -213,7 +220,7 @@ bool PNPSolver::solve(Isometry3T& rig_from_world, Matrix6T& static_info_exp,
   Matrix6T H;
   Vector6T rhs;
 
-  auto initial_cost = evaluate_cost(rig_from_world);
+  auto initial_cost = evaluate_cost(rig_from_world, settings);
   if (initial_cost < 5e-3f) {
     // Nothing to minimize. We have a "pendulum" effect on still frames otherwise.
     static_info_exp.setIdentity();
@@ -225,11 +232,11 @@ bool PNPSolver::solve(Isometry3T& rig_from_world, Matrix6T& static_info_exp,
   }
   auto current_cost = initial_cost;
 
-  build_hessian(rig_from_world, H, rhs);
+  build_hessian(rig_from_world, H, rhs, settings);
 
   Vector6T scaling = H.diagonal();
 
-  float lambda = settings_.lambda;
+  float lambda = settings.lambda;
   int32_t num_iterations = 0;
   do {
     ++num_iterations;
@@ -243,9 +250,9 @@ bool PNPSolver::solve(Isometry3T& rig_from_world, Matrix6T& static_info_exp,
     guess = rig_from_world * guess;
     guess.linear() = common::CalculateRotationFromSVD(guess.matrix());
 
-    float cost = evaluate_cost(guess);
+    float cost = evaluate_cost(guess, settings);
 
-    //     TraceMessageIf(settings_.verbose, "curr_cost = {%f}, cost = {%f}", current_cost, cost);
+    //     TraceMessageIf(settings.verbose, "curr_cost = {%f}, cost = {%f}", current_cost, cost);
 
     float predicted_relative_reduction =
         step.dot(H * step) / current_cost + 2.f * lambda * step.dot(scaling.asDiagonal() * step) / current_cost;
@@ -268,19 +275,19 @@ bool PNPSolver::solve(Isometry3T& rig_from_world, Matrix6T& static_info_exp,
 
       current_cost = cost;
 
-      build_hessian(rig_from_world, H, rhs);
+      build_hessian(rig_from_world, H, rhs, settings);
       scaling = H.diagonal();
     } else {
       lambda *= 2.f;
     }
-  } while (num_iterations < settings_.max_iteration);
+  } while (num_iterations < settings.max_iteration);
   static_info_exp = H;
 
-  TraceMessageIf(settings_.verbose, "curr_cost = {%f}, init_cost = {%f}", current_cost, initial_cost);
+  TraceMessageIf(settings.verbose, "curr_cost = {%f}, init_cost = {%f}", current_cost, initial_cost);
 
-  bool status = current_cost < settings_.cost_thresh || current_cost < initial_cost;
+  bool status = current_cost < settings.cost_thresh || current_cost < initial_cost;
 
-  if (status && settings_.recalculate_cov) {
+  if (status && settings.recalculate_cov) {
     static_info_exp.setZero();
     std::vector<Isometry3T> cam_from_w;
     cam_from_w.reserve(rig_.num_cameras);
@@ -301,7 +308,7 @@ bool PNPSolver::solve(Isometry3T& rig_from_world, Matrix6T& static_info_exp,
 
       point_cam = Tcam_from_w * point_w;
 
-      if (point_cam.z() <= settings_.point_z_thresh) continue;
+      if (point_cam.z() <= settings.point_z_thresh) continue;
 
       Mat26 J = projection_jacobian(point_cam) * Tcam_from_w.linear() * point_jacobian(point_w);
       static_info_exp += J.transpose() * obs.xy_info * J;

@@ -17,6 +17,8 @@
 
 #pragma once
 
+#include <cstdint>
+
 #include "camera/observation.h"
 #include "camera/rig.h"
 #include "common/isometry.h"
@@ -38,23 +40,23 @@ struct PNPSettings {
   float lambda = 1e-3;
 
   float huber = 2e-2;
-  int max_iteration = 13;
+  int32_t max_iteration = 13;
 
   bool filter_new_observations = true;
-  size_t max_obs_per_camera = 270;
+  int32_t max_obs_per_camera = 270;
 
   float point_z_thresh = 0.01f;
 
   bool verbose = false;
 
-  size_t min_observations = 13;
+  int32_t min_observations = 13;
 
   float cost_thresh = 0.6;
 };
 
 class PNPSolver {
 public:
-  explicit PNPSolver(const camera::Rig& rig, const PNPSettings& settings = PNPSettings());
+  explicit PNPSolver(const camera::Rig& rig);
 
   // IN:  rig_from_world  - used as start guess
   // OUT: rig_from_world  - if success updated pose otherwise it has unpredicted behavior
@@ -62,15 +64,14 @@ public:
   //                        the world coordinate system
   bool solve(Isometry3T& rig_from_world, Matrix6T& static_info_exp,
              const std::vector<camera::Observation>& observations,
-             const std::unordered_map<TrackId, Vector3T>& landmarks) const;
+             const std::unordered_map<TrackId, Vector3T>& landmarks, const PNPSettings& settings) const;
 
 private:
-  float evaluate_cost(const Isometry3T& rig_from_world) const;
+  float evaluate_cost(const Isometry3T& rig_from_world, const PNPSettings& settings) const;
 
-  void build_hessian(const Isometry3T& rig_from_world, Matrix6T& H, Vector6T& rhs) const;
+  void build_hessian(const Isometry3T& rig_from_world, Matrix6T& H, Vector6T& rhs, const PNPSettings& settings) const;
 
   camera::Rig rig_;
-  PNPSettings settings_;
 
   mutable std::vector<std::reference_wrapper<const Vector3T>> landmark_for_observation_;
   mutable std::vector<std::reference_wrapper<const camera::Observation>> observations_;

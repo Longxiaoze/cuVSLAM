@@ -233,7 +233,7 @@ SolverSfMInertial::SolverSfMInertial(map::UnifiedMap& map, const camera::Rig& ri
       map_(map),
       optimizer_(10),
       imu_init_bundler_(calib),
-      stereo_pnp_(rig, pnp::PNPSettings::InertialSettings()),
+      stereo_pnp_(rig),
       triangulator(rig) {
   sba::Mode sba_mode;
   if (disable_fusion_except_gravity_ && rig_.num_cameras > 2) {
@@ -393,15 +393,16 @@ SolverSfMInertial::SolverSfMInertial(map::UnifiedMap& map, const camera::Rig& ri
 bool runInertialPnP(const imu::ImuCalibration& calib, const InertialPnP& solver,
                     const std::unordered_map<TrackId, Track>& tracks3d,
                     const std::vector<camera::Observation>& observations, const camera::Rig& rig,
-                    const Vector3T& gravity,
+                    const Vector3T& gravity, const InertialPnPSettings& settings,
                     sba_imu::Pose& prev_pose,  // non-const because of velocities updates
                     sba_imu::Pose& curr_pose) {
-  return solver.Solve(calib, tracks3d, observations, rig, gravity, prev_pose, curr_pose);
+  return solver.Solve(calib, tracks3d, observations, rig, gravity, settings, prev_pose, curr_pose);
 }
 
 // OUT: curr_pose - current pose if success otherwise curr_pose is unchanged
 bool runStereoPnP(pnp::PNPSolver& solver, const std::unordered_map<TrackId, Track>& tracks3d,
                   const std::vector<camera::Observation>& observations, const Isometry3T& imu_from_rig,
+                  const pnp::PNPSettings& settings,
                   sba_imu::Pose& prev_pose,  // non-const because of velocities updates
                   sba_imu::Pose& curr_pose) {
   /* logic here:
@@ -419,7 +420,7 @@ bool runStereoPnP(pnp::PNPSolver& solver, const std::unordered_map<TrackId, Trac
 
   Isometry3T rig_from_world = (prev_pose.w_from_imu * imu_from_rig).inverse();
   Matrix6T info;
-  const bool result = solver.solve(rig_from_world, info, observations, landmarks);
+  const bool result = solver.solve(rig_from_world, info, observations, landmarks, settings);
 
   if (result) {
     /* logic here:
@@ -568,8 +569,8 @@ bool SolverSfMInertial::solveNextFrame(int64_t time_ns, const sof::FrameState& f
                      prev_pose.velocity.x(), prev_pose.velocity.y(), prev_pose.velocity.z());
       }
       TRACE_EVENT ev2 = profiler_domain_.trace_event("runInertialPnP");
-      pnp_result =
-          runInertialPnP(calib_, inertial_pnp_, landmarks, obs_vector, rig_, *maybe_gravity, prev_pose, curr_pose);
+      pnp_result = runInertialPnP(calib_, inertial_pnp_, landmarks, obs_vector, rig_, *maybe_gravity,
+                                  solver_settings.imu_pnp, prev_pose, curr_pose);
       TraceMessage("[INERTIAL PnP] result=%d gyro=[%.6f,%.6f,%.6f] acc=[%.6f,%.6f,%.6f] vel=[%.3f,%.3f,%.3f]",
                    (int)pnp_result, curr_pose.gyro_bias.x(), curr_pose.gyro_bias.y(), curr_pose.gyro_bias.z(),
                    curr_pose.acc_bias.x(), curr_pose.acc_bias.y(), curr_pose.acc_bias.z(), curr_pose.velocity.x(),
@@ -577,7 +578,8 @@ bool SolverSfMInertial::solveNextFrame(int64_t time_ns, const sof::FrameState& f
     } else {
       {
         TRACE_EVENT ev2 = profiler_domain_.trace_event("runStereoPnP");
-        pnp_result = runStereoPnP(stereo_pnp_, landmarks, obs_vector, imu_from_rig, prev_pose, curr_pose);
+        pnp_result = runStereoPnP(stereo_pnp_, landmarks, obs_vector, imu_from_rig, solver_settings.inertial_stereo_pnp,
+                                  prev_pose, curr_pose);
       }
       if (pnp_result) {
         curr_pose.gyro_bias = prev_pose.gyro_bias;

@@ -22,7 +22,10 @@
 #include <vector>
 
 #include "common/imu_calibration.h"
+#include "pipelines/inertial_pnp.h"
 #include "pipelines/tracker_state_machine.h"
+#include "pnp/multicam_pnp.h"
+#include "pnp/visual_icp.h"
 #include "sba/sba_config.h"
 #include "sof/sof_config.h"
 
@@ -43,7 +46,10 @@ struct TrackPerFrameSettings {
   KeyFrameSettings kf;
   sba::Settings sba;
   pipelines::StateMachineSettings sm;
-  // TODO[Zheng]: Future per-frame settings (PnP, ICP, RANSAC, …) go here as additional fields.
+  pnp::PNPSettings vo_pnp;
+  pnp::PNPSettings inertial_stereo_pnp = pnp::PNPSettings::InertialSettings();
+  pipelines::InertialPnPSettings imu_pnp;
+  pnp::ICPSettings icp;
 };
 
 // Configuration of the available sensor set for MultisensorOdometry.

@@ -127,11 +127,17 @@ bool RGBDOdometry::track(const Sources& curr_sources, const DepthSources& depth_
 
     inputs.depth_info = &depth_info;
 
-    have_pose = solver_.solveNextFrame(timestamp, frame_type, inputs, world_from_rig, static_info_exp,
-                                       {per_frame_setting.sba, per_frame_setting.sm}, tracks2d, tracks3d);
+    have_pose = solver_.solveNextFrame(
+        timestamp, frame_type, inputs, world_from_rig, static_info_exp,
+        {per_frame_setting.sba, per_frame_setting.sm, per_frame_setting.vo_pnp, per_frame_setting.inertial_stereo_pnp,
+         per_frame_setting.imu_pnp, per_frame_setting.icp},
+        tracks2d, tracks3d);
   } else {
-    have_pose = solver_.solveNextFrame(timestamp, frame_type, inputs, world_from_rig, static_info_exp,
-                                       {per_frame_setting.sba, per_frame_setting.sm}, tracks2d, tracks3d);
+    have_pose = solver_.solveNextFrame(
+        timestamp, frame_type, inputs, world_from_rig, static_info_exp,
+        {per_frame_setting.sba, per_frame_setting.sm, per_frame_setting.vo_pnp, per_frame_setting.inertial_stereo_pnp,
+         per_frame_setting.imu_pnp, per_frame_setting.icp},
+        tracks2d, tracks3d);
   }
 
   if (stat) {

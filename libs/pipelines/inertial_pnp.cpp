@@ -32,7 +32,7 @@ namespace cuvslam::pipelines {
 
 bool InertialPnP::Solve(const imu::ImuCalibration& calib, const std::unordered_map<TrackId, Track>& tracks3d,
                         const std::vector<camera::Observation>& observations, const camera::Rig& rig,
-                        const Vector3T& gravity_w,
+                        const Vector3T& gravity_w, const InertialPnPSettings& settings,
                         sba_imu::Pose& prev_pose,  // non-const because of velocities updates
                         sba_imu::Pose& curr_pose) const {
   TRACE_EVENT ev = profiler_domain_.trace_event("Solve");
@@ -44,10 +44,15 @@ bool InertialPnP::Solve(const imu::ImuCalibration& calib, const std::unordered_m
   input.freeze_bias = true;
   input.rig = rig;
 
-  input.robustifier_scale = 0.4f;
+  if (settings.max_iteration < 0 || settings.min_observations < 0) {
+    TraceError("InertialPnPSettings count fields must be non-negative");
+    return false;
+  }
+
+  input.robustifier_scale = settings.robustifier_scale;
   input.imu_penalty = 1e-3f;
   input.robustifier_scale_pose = -1.0f;
-  input.max_iterations = 20;
+  input.max_iterations = settings.max_iteration;
   input.outlier_thresh = {10.f, 7.f};
   input.translation_constraint = 0;
   input.robustifier_scale_tr = 0.02f;
@@ -84,9 +89,8 @@ bool InertialPnP::Solve(const imu::ImuCalibration& calib, const std::unordered_m
 
   TraceMessage("InertialPnP: obs=%d points=%d", (int)input.observation_xys.size(), (int)input.points.size());
 
-  const int kMinObservations = 25;
-  if (input.observation_xys.size() < kMinObservations) {
-    TraceMessage("InertialPnP: REJECTED obs < %d", kMinObservations);
+  if (input.observation_xys.size() < static_cast<size_t>(settings.min_observations)) {
+    TraceMessage("InertialPnP: REJECTED obs < %d", settings.min_observations);
     return false;
   }
 

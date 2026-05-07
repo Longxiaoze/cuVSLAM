@@ -80,6 +80,24 @@ int64_t ParseInt64(std::string_view v) {
   }
 }
 
+std::string_view TrackOptionName(std::string_view expression) {
+  constexpr std::string_view options_prefix = "options.";
+  if (expression.substr(0, options_prefix.size()) == options_prefix) {
+    return expression.substr(options_prefix.size());
+  }
+  return expression;
+}
+
+int32_t RequireNonNegative(int32_t value, std::string_view expression) {
+  if (value < 0) {
+    const std::string_view name = TrackOptionName(expression);
+    throw std::invalid_argument("TrackOptions::" + std::string(name) + " must be non-negative");
+  }
+  return value;
+}
+
+#define REQUIRE_NON_NEGATIVE(x) RequireNonNegative((x), #x)
+
 // Builds a TrackPerFrameSettings from per-frame options. TrackOptions always carries concrete
 // values; pass TrackOptions{} to use all defaults. Add new per-frame categories to
 // TrackPerFrameSettings rather than adding parameters here or to track().
@@ -94,8 +112,40 @@ odom::TrackPerFrameSettings BuildTrackFrameSettings(const Odometry::TrackOptions
   result.sof.ransac_filter = options.ransac_filter;
   result.kf.survivor_from_last = options.kf_survivor_from_last;
   result.kf.max_timedelta_between_kfs_s = options.kf_max_timedelta_between_kfs_s;
+  result.vo_pnp.lambda = options.vo_pnp_lambda;
+  result.vo_pnp.huber = options.vo_pnp_huber;
+  result.vo_pnp.max_iteration = REQUIRE_NON_NEGATIVE(options.vo_pnp_max_iteration);
+  result.vo_pnp.recalculate_cov = options.vo_pnp_recalculate_cov;
+  result.vo_pnp.filter_new_observations = options.vo_pnp_filter_new_observations;
+  result.vo_pnp.max_obs_per_camera = REQUIRE_NON_NEGATIVE(options.vo_pnp_max_obs_per_camera);
+  result.vo_pnp.point_z_thresh = options.vo_pnp_point_z_thresh;
+  result.vo_pnp.min_observations = REQUIRE_NON_NEGATIVE(options.vo_pnp_min_observations);
+  result.vo_pnp.cost_thresh = options.vo_pnp_cost_thresh;
+  result.inertial_stereo_pnp.lambda = options.inertial_stereo_pnp_lambda;
+  result.inertial_stereo_pnp.huber = options.inertial_stereo_pnp_huber;
+  result.inertial_stereo_pnp.max_iteration = REQUIRE_NON_NEGATIVE(options.inertial_stereo_pnp_max_iteration);
+  result.inertial_stereo_pnp.recalculate_cov = options.inertial_stereo_pnp_recalculate_cov;
+  result.inertial_stereo_pnp.filter_new_observations = options.inertial_stereo_pnp_filter_new_observations;
+  result.inertial_stereo_pnp.max_obs_per_camera = REQUIRE_NON_NEGATIVE(options.inertial_stereo_pnp_max_obs_per_camera);
+  result.inertial_stereo_pnp.point_z_thresh = options.inertial_stereo_pnp_point_z_thresh;
+  result.inertial_stereo_pnp.min_observations = REQUIRE_NON_NEGATIVE(options.inertial_stereo_pnp_min_observations);
+  result.inertial_stereo_pnp.cost_thresh = options.inertial_stereo_pnp_cost_thresh;
+  result.imu_pnp.robustifier_scale = options.imu_pnp_robustifier_scale;
+  result.imu_pnp.max_iteration = REQUIRE_NON_NEGATIVE(options.imu_pnp_max_iteration);
+  result.imu_pnp.min_observations = REQUIRE_NON_NEGATIVE(options.imu_pnp_min_observations);
+  result.icp.lambda = options.icp_lambda;
+  result.icp.huber_vis = options.icp_huber_vis;
+  result.icp.huber_depth = options.icp_huber_depth;
+  result.icp.max_iteration = REQUIRE_NON_NEGATIVE(options.icp_max_iteration);
+  result.icp.cost_thresh = options.icp_cost_thresh;
+  result.icp.min_scale_level = REQUIRE_NON_NEGATIVE(options.icp_min_scale_level);
+  result.icp.max_scale_level = REQUIRE_NON_NEGATIVE(options.icp_max_scale_level);
+  result.icp.num_iters_per_scale = REQUIRE_NON_NEGATIVE(options.icp_num_iters_per_scale);
+  result.icp.blending_alpha = options.icp_blending_alpha;
   return result;
 }
+
+#undef REQUIRE_NON_NEGATIVE
 
 // TODO(vikuznetsov): Remove camera::MulticameraMode & reuse cuvslam enum? What about Manual mode hidden from
 // cuvslam API?

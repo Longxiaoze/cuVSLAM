@@ -63,7 +63,6 @@ private:
   std::unique_ptr<map::ServiceBase> sba_service_;
 
   MulticamTriangulator triangulator;
-
   pnp::PNPSolver pnp_;
 
   void exportTracks(const std::vector<camera::Observation>& observations, std::vector<Track2D>& out_tracks2d,

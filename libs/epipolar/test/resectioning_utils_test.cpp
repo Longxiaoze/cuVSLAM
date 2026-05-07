@@ -121,7 +121,7 @@ protected:
     // we are not checking covariance, it needs a different test
     Matrix6T precision;
     Isometry3T left_camera_from_world = actualWorldFromCamera_.inverse();
-    auto status = pnp_->solve(left_camera_from_world, precision, data.observations, data.landmarks);
+    auto status = pnp_->solve(left_camera_from_world, precision, data.observations, data.landmarks, pnp::PNPSettings{});
     EXPECT_TRUE(status);
   }
 

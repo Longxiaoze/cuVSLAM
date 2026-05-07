@@ -28,10 +28,7 @@
 namespace cuvslam::slam {
 
 LocalizerAndMapper::LocalizerAndMapper(const camera::Rig& rig, FeatureDescriptorType descriptor_type, bool use_gpu)
-    : rig_(rig),
-      map_(rig, descriptor_type, use_gpu),
-      pnp_(rig, pnp::PNPSettings::LCSettings()),
-      random_generator_(random_device_()) {}
+    : rig_(rig), map_(rig, descriptor_type, use_gpu), pnp_(rig), random_generator_(random_device_()) {}
 
 LocalizerAndMapper::~LocalizerAndMapper() { SlamStdout("Destroyed LocalizerAndMapper instance. "); }
 
@@ -611,7 +608,8 @@ bool LocalizerAndMapper::CalcBetweenPose(
 
   Isometry3T rig_from_world_estimate = Isometry3T::Identity();
   Matrix6T precision;
-  bool res = pnp_.solve(rig_from_world_estimate, precision, pnp_observations, pnp_landmarks);
+  bool res =
+      pnp_.solve(rig_from_world_estimate, precision, pnp_observations, pnp_landmarks, pnp::PNPSettings::LCSettings());
 
   if (!res) {
     return false;

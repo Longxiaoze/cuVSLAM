@@ -34,7 +34,7 @@ ILoopClosureSolverPtr CreateLoopClosureSolverSimple(const camera::Rig& rig, Rans
 
 LoopClosureSolverSimple::LoopClosureSolverSimple(const camera::Rig& rig, RansacType ransac_type, bool randomized,
                                                  LSIGrid::FetchStrategy fetch_strategy)
-    : pnp_(rig, pnp::PNPSettings::LCSettings()), rig_(rig) {
+    : pnp_(rig), rig_(rig) {
   this->ransac_type_ = ransac_type;
   this->randomized_ = randomized;
   this->fetch_strategy_ = fetch_strategy;
@@ -116,7 +116,8 @@ bool LoopClosureSolverSimple::Solve(const LoopClosureTask& task, const LSIGrid& 
 
   Matrix6T precision;
   TRACE_EVENT ev_refinepose = profiler_domain_.trace_event("RefinePose()", profiler_color_);
-  camera_res = pnp_.solve(rig_from_world_guess, precision, pnp_observations, pnp_landmarks);
+  camera_res =
+      pnp_.solve(rig_from_world_guess, precision, pnp_observations, pnp_landmarks, pnp::PNPSettings::LCSettings());
 
   ev_refinepose.Pop();
 

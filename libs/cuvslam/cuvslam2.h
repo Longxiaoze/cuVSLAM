@@ -536,6 +536,121 @@ public:
 
     /// Maximum time delta between consecutive keyframes (in seconds). Default: 60
     int64_t kf_max_timedelta_between_kfs_s = 60;
+
+    // ============================================================
+    // PNP Solver Settings - visual PNP tracking (stereo / multi-camera modes)
+    // ============================================================
+
+    /// Levenberg-Marquardt damping factor. Default: 1e-3
+    float vo_pnp_lambda = 1e-3f;
+
+    /// Huber robustifier scale for reprojection residuals. Default: 2e-2
+    float vo_pnp_huber = 2e-2f;
+
+    /// Maximum LM solver iterations. Default: 13
+    int32_t vo_pnp_max_iteration = 13;
+
+    /// Whether to recompute the covariance matrix after a successful solve. Default: true
+    bool vo_pnp_recalculate_cov = true;
+
+    /// Whether to filter/sort observations to max_obs_per_camera oldest tracks first. Default: true
+    bool vo_pnp_filter_new_observations = true;
+
+    /// Maximum observations fed to the solver per camera. Default: 270
+    int32_t vo_pnp_max_obs_per_camera = 270;
+
+    /// Minimum z-depth for a landmark to be used (in camera frame). Default: 0.01
+    float vo_pnp_point_z_thresh = 0.01f;
+
+    /// Minimum number of observations required to attempt a solve. Default: 13
+    int32_t vo_pnp_min_observations = 13;
+
+    /// Absolute convergence threshold for the PnP solver.
+    /// Solve succeeds when: (current_cost < vo_pnp_cost_thresh) || (current_cost < initial_cost).
+    /// The OR means either condition alone is sufficient: a low final cost always passes, and
+    /// any net improvement over the initial cost also passes regardless of its absolute value.
+    /// Because of the OR, setting vo_pnp_cost_thresh very large (e.g. FLT_MAX) makes the
+    /// absolute-threshold branch always true, rendering the relative-drop check irrelevant.
+    /// Default: 0.6
+    float vo_pnp_cost_thresh = 0.6f;
+
+    // ============================================================
+    // PNP Solver Settings - stereo fallback in inertial mode
+    // Defaults match pnp::PNPSettings::InertialSettings().
+    // ============================================================
+
+    /// Levenberg-Marquardt damping factor. Default: 1e-3
+    float inertial_stereo_pnp_lambda = 1e-3f;
+
+    /// Huber robustifier scale for reprojection residuals. Default: 0.1
+    float inertial_stereo_pnp_huber = 0.1f;
+
+    /// Maximum LM solver iterations. Default: 13
+    int32_t inertial_stereo_pnp_max_iteration = 13;
+
+    /// Whether to recompute the covariance matrix after a successful solve. Default: false
+    bool inertial_stereo_pnp_recalculate_cov = false;
+
+    /// Whether to filter/sort observations to max_obs_per_camera oldest tracks first. Default: true
+    bool inertial_stereo_pnp_filter_new_observations = true;
+
+    /// Maximum observations fed to the solver per camera. Default: 270
+    int32_t inertial_stereo_pnp_max_obs_per_camera = 270;
+
+    /// Minimum z-depth for a landmark to be used (in camera frame). Default: 0.01
+    float inertial_stereo_pnp_point_z_thresh = 0.01f;
+
+    /// Minimum number of observations required to attempt a solve. Default: 13
+    int32_t inertial_stereo_pnp_min_observations = 13;
+
+    /// Absolute convergence threshold for the inertial-mode stereo fallback PnP solver.
+    /// Default: 0.6
+    float inertial_stereo_pnp_cost_thresh = 0.6f;
+
+    // ============================================================
+    // Inertial PNP Solver Settings - IMU-fused tracking path
+    // ============================================================
+
+    /// Robustifier scale for inertial PNP reprojection residuals. Default: 0.4
+    float imu_pnp_robustifier_scale = 0.4f;
+
+    /// Maximum inertial PNP solver iterations. Default: 20
+    int32_t imu_pnp_max_iteration = 20;
+
+    /// Minimum number of observations required to attempt inertial PNP. Default: 25
+    int32_t imu_pnp_min_observations = 25;
+
+    // ============================================================
+    // ICP Solver Settings - mono-depth (RGB-D) mode only
+    // ============================================================
+
+    /// Levenberg-Marquardt damping factor. Default: 1e-2
+    float icp_lambda = 1e-2f;
+
+    /// Huber robustifier scale for visual reprojection residuals. Default: 1e-2
+    float icp_huber_vis = 1e-2f;
+
+    /// Huber robustifier scale for depth ICP residuals. Default: 5e-2
+    float icp_huber_depth = 5e-2f;
+
+    /// Maximum LM solver iterations (used when no depth pyramid, i.e. pure visual). Default: 20
+    int32_t icp_max_iteration = 20;
+
+    /// Convergence threshold (cost must not exceed initial cost). Default: 0.6
+    float icp_cost_thresh = 0.6f;
+
+    /// Finest pyramid level to process (0 = full resolution / finest). Default: 0
+    int32_t icp_min_scale_level = 0;
+
+    /// Coarsest pyramid level to start from (higher = coarser / lower resolution). Default: 4
+    /// Processing proceeds from icp_max_scale_level down to icp_min_scale_level (coarse to fine).
+    int32_t icp_max_scale_level = 4;
+
+    /// LM iterations per pyramid level when depth is available. Default: 20
+    int32_t icp_num_iters_per_scale = 20;
+
+    /// Blending weight between visual (alpha) and depth ICP (1-alpha) residuals. Default: 0.8
+    float icp_blending_alpha = 0.8f;
   };
 
   // TODO(vikuznetsov): remove when https://gcc.gnu.org/bugzilla/show_bug.cgi?id=88165 is fixed

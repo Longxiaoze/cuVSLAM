@@ -92,7 +92,8 @@ bool SolverSfMRGBD::solveNextFrame(int64_t time_ns, const sof::FrameState& frame
 
     Isometry3T rig_from_world = prev_rig_from_world_;  // try to optimize copy, use result if success only
 
-    bool res = visual_icp_.solve(rig_from_world, static_info_exp, obs_vector, landmarks, inputs.depth_info);
+    bool res = visual_icp_.solve(rig_from_world, static_info_exp, obs_vector, landmarks, solver_settings.icp,
+                                 inputs.depth_info);
 
     RERUN(logLandmarks, landmarks, rig_from_world, *rig_.intrinsics[0], "world/camera_0/images/landmarks",
           Color(255, 255, 0));

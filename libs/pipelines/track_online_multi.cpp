@@ -94,7 +94,7 @@ bool SolverSfMMulti::solveNextFrame(int64_t time_ns, const sof::FrameState& fram
     RERUN(logLandmarks3D, landmarks, "world/camera_0/images/sba_landmarks", Color(255, 255, 0), 0.01f);
 
     Isometry3T pose = rig_from_w;  // try to optimize copy, use result if success only
-    if (pnp_.solve(pose, static_info_exp, obs_vector, landmarks)) {
+    if (pnp_.solve(pose, static_info_exp, obs_vector, landmarks, solver_settings.vo_pnp)) {
       world_from_rig = pose.inverse();
       rig_from_w = pose;
       prev_rig_from_world_ = rig_from_w;

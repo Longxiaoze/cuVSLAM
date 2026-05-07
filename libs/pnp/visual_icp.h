@@ -16,6 +16,8 @@
  */
 
 #pragma once
+
+#include <cstdint>
 #include <optional>
 
 #include "camera/observation.h"
@@ -49,25 +51,25 @@ struct ICPSettings {
 
   float huber_depth = 5e-2;
 
-  int max_iteration = 20;
+  int32_t max_iteration = 20;
   bool verbose = false;
   float cost_thresh = 0.6;
 
-  int min_scale_level = 0;
-  int max_scale_level = 4;
-  int num_iters_per_scale = 20;
+  int32_t min_scale_level = 0;
+  int32_t max_scale_level = 4;
+  int32_t num_iters_per_scale = 20;
 
   float blending_alpha = 0.8f;
 };
 
 class VisualICP {
 public:
-  VisualICP(const camera::Rig& rig, const ICPSettings& settings = ICPSettings());
+  explicit VisualICP(const camera::Rig& rig);
 
   bool solve(Isometry3T& rig_from_world, Matrix6T& static_info_exp,
              const std::vector<camera::Observation>& observations,
              const std::unordered_map<TrackId, Vector3T>& landmarks,  // in map frame!
-             const IcpInfo* info = nullptr) const;
+             const ICPSettings& settings, const IcpInfo* info = nullptr) const;
 
   void lift_mono_tracks(const IcpInfo& inputs, const Isometry3T& world_from_rig,
                         const std::vector<camera::Observation>& observations,
@@ -75,18 +77,18 @@ public:
 
 private:
   float total_cost_and_hessian(Matrix6T& H, Vector6T& rhs, const Isometry3T& cam_from_world, uint8_t pyramid_level,
-                               const IcpInfo* depth_info = nullptr) const;
+                               const ICPSettings& settings, const IcpInfo* depth_info = nullptr) const;
 
-  float reprojection_cost_and_hessian(Matrix6T& H, Vector6T& rhs, const Isometry3T& cam_from_world) const;
+  float reprojection_cost_and_hessian(Matrix6T& H, Vector6T& rhs, const Isometry3T& cam_from_world,
+                                      const ICPSettings& settings) const;
 
   float icp_hessian_and_cost(Matrix6T& H, Vector6T& rhs, const Isometry3T& cam_from_world, uint8_t pyramid_level,
-                             const IcpInfo& depth_info) const;
+                             const ICPSettings& settings, const IcpInfo& depth_info) const;
 
-  bool solve_level(Isometry3T& rig_from_world, Matrix6T& static_info_exp, int level, int num_iters,
+  bool solve_level(Isometry3T& rig_from_world, Matrix6T& static_info_exp, int level, const ICPSettings& settings,
                    const IcpInfo* depth_info, const Isometry3T& cam_from_rig) const;
 
   camera::Rig rig_;
-  ICPSettings settings_;
   cuda::GPUICPTools icp_tools_;
 
   // mutable std::optional<Isometry3T> prev_delta_;

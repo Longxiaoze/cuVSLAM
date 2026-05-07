@@ -82,9 +82,82 @@ bool LoadTrackOptionsFromFile(const char* filepath, Odometry::TrackOptions& opti
   if (YAML::Node v = node["ransac_filter"]) options.ransac_filter = v.as<bool>();
   if (YAML::Node v = node["kf_survivor_from_last"]) options.kf_survivor_from_last = v.as<float>();
   if (YAML::Node v = node["kf_max_timedelta_between_kfs_s"]) options.kf_max_timedelta_between_kfs_s = v.as<int64_t>();
+  if (YAML::Node v = node["vo_pnp_lambda"]) options.vo_pnp_lambda = v.as<float>();
+  if (YAML::Node v = node["vo_pnp_huber"]) options.vo_pnp_huber = v.as<float>();
+  if (YAML::Node v = node["vo_pnp_max_iteration"]) options.vo_pnp_max_iteration = v.as<int32_t>();
+  if (YAML::Node v = node["vo_pnp_recalculate_cov"]) options.vo_pnp_recalculate_cov = v.as<bool>();
+  if (YAML::Node v = node["vo_pnp_filter_new_observations"]) options.vo_pnp_filter_new_observations = v.as<bool>();
+  if (YAML::Node v = node["vo_pnp_max_obs_per_camera"]) options.vo_pnp_max_obs_per_camera = v.as<int32_t>();
+  if (YAML::Node v = node["vo_pnp_point_z_thresh"]) options.vo_pnp_point_z_thresh = v.as<float>();
+  if (YAML::Node v = node["vo_pnp_min_observations"]) options.vo_pnp_min_observations = v.as<int32_t>();
+  if (YAML::Node v = node["vo_pnp_cost_thresh"]) options.vo_pnp_cost_thresh = v.as<float>();
+  if (YAML::Node v = node["inertial_stereo_pnp_lambda"]) options.inertial_stereo_pnp_lambda = v.as<float>();
+  if (YAML::Node v = node["inertial_stereo_pnp_huber"]) options.inertial_stereo_pnp_huber = v.as<float>();
+  if (YAML::Node v = node["inertial_stereo_pnp_max_iteration"])
+    options.inertial_stereo_pnp_max_iteration = v.as<int32_t>();
+  if (YAML::Node v = node["inertial_stereo_pnp_recalculate_cov"])
+    options.inertial_stereo_pnp_recalculate_cov = v.as<bool>();
+  if (YAML::Node v = node["inertial_stereo_pnp_filter_new_observations"])
+    options.inertial_stereo_pnp_filter_new_observations = v.as<bool>();
+  if (YAML::Node v = node["inertial_stereo_pnp_max_obs_per_camera"])
+    options.inertial_stereo_pnp_max_obs_per_camera = v.as<int32_t>();
+  if (YAML::Node v = node["inertial_stereo_pnp_point_z_thresh"])
+    options.inertial_stereo_pnp_point_z_thresh = v.as<float>();
+  if (YAML::Node v = node["inertial_stereo_pnp_min_observations"])
+    options.inertial_stereo_pnp_min_observations = v.as<int32_t>();
+  if (YAML::Node v = node["inertial_stereo_pnp_cost_thresh"]) options.inertial_stereo_pnp_cost_thresh = v.as<float>();
+  if (YAML::Node v = node["imu_pnp_robustifier_scale"]) options.imu_pnp_robustifier_scale = v.as<float>();
+  if (YAML::Node v = node["imu_pnp_max_iteration"]) options.imu_pnp_max_iteration = v.as<int32_t>();
+  if (YAML::Node v = node["imu_pnp_min_observations"]) options.imu_pnp_min_observations = v.as<int32_t>();
+  if (YAML::Node v = node["icp_lambda"]) options.icp_lambda = v.as<float>();
+  if (YAML::Node v = node["icp_huber_vis"]) options.icp_huber_vis = v.as<float>();
+  if (YAML::Node v = node["icp_huber_depth"]) options.icp_huber_depth = v.as<float>();
+  if (YAML::Node v = node["icp_max_iteration"]) options.icp_max_iteration = v.as<int32_t>();
+  if (YAML::Node v = node["icp_cost_thresh"]) options.icp_cost_thresh = v.as<float>();
+  if (YAML::Node v = node["icp_min_scale_level"]) options.icp_min_scale_level = v.as<int32_t>();
+  if (YAML::Node v = node["icp_max_scale_level"]) options.icp_max_scale_level = v.as<int32_t>();
+  if (YAML::Node v = node["icp_num_iters_per_scale"]) options.icp_num_iters_per_scale = v.as<int32_t>();
+  if (YAML::Node v = node["icp_blending_alpha"]) options.icp_blending_alpha = v.as<float>();
   WarnUnknownKeys(node, "TrackOptions",
-                  {"num_desired_tracks", "border_top", "border_bottom", "border_left", "border_right", "box3_prefilter",
-                   "ransac_filter", "kf_survivor_from_last", "kf_max_timedelta_between_kfs_s"});
+                  {"num_desired_tracks",
+                   "border_top",
+                   "border_bottom",
+                   "border_left",
+                   "border_right",
+                   "box3_prefilter",
+                   "ransac_filter",
+                   "kf_survivor_from_last",
+                   "kf_max_timedelta_between_kfs_s",
+                   "vo_pnp_lambda",
+                   "vo_pnp_huber",
+                   "vo_pnp_max_iteration",
+                   "vo_pnp_recalculate_cov",
+                   "vo_pnp_filter_new_observations",
+                   "vo_pnp_max_obs_per_camera",
+                   "vo_pnp_point_z_thresh",
+                   "vo_pnp_min_observations",
+                   "vo_pnp_cost_thresh",
+                   "inertial_stereo_pnp_lambda",
+                   "inertial_stereo_pnp_huber",
+                   "inertial_stereo_pnp_max_iteration",
+                   "inertial_stereo_pnp_recalculate_cov",
+                   "inertial_stereo_pnp_filter_new_observations",
+                   "inertial_stereo_pnp_max_obs_per_camera",
+                   "inertial_stereo_pnp_point_z_thresh",
+                   "inertial_stereo_pnp_min_observations",
+                   "inertial_stereo_pnp_cost_thresh",
+                   "imu_pnp_robustifier_scale",
+                   "imu_pnp_max_iteration",
+                   "imu_pnp_min_observations",
+                   "icp_lambda",
+                   "icp_huber_vis",
+                   "icp_huber_depth",
+                   "icp_max_iteration",
+                   "icp_cost_thresh",
+                   "icp_min_scale_level",
+                   "icp_max_scale_level",
+                   "icp_num_iters_per_scale",
+                   "icp_blending_alpha"});
   return true;
 }
 

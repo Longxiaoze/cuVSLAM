@@ -541,6 +541,64 @@ NB_MODULE(pycuvslam, m) {
               "Keyframe selection threshold: survivor tracks percentage (0-100)")
       .def_rw("kf_max_timedelta_between_kfs_s", &Odometry::TrackOptions::kf_max_timedelta_between_kfs_s,
               "Maximum time delta between consecutive keyframes (seconds)")
+      // PNP Settings
+      .def_rw("vo_pnp_lambda", &Odometry::TrackOptions::vo_pnp_lambda, "Visual PNP Levenberg-Marquardt damping factor")
+      .def_rw("vo_pnp_huber", &Odometry::TrackOptions::vo_pnp_huber, "Visual PNP Huber robustifier scale")
+      .def_rw("vo_pnp_max_iteration", &Odometry::TrackOptions::vo_pnp_max_iteration,
+              "Maximum visual PNP solver iterations")
+      .def_rw("vo_pnp_recalculate_cov", &Odometry::TrackOptions::vo_pnp_recalculate_cov,
+              "Whether visual PNP recomputes covariance after a successful solve")
+      .def_rw("vo_pnp_filter_new_observations", &Odometry::TrackOptions::vo_pnp_filter_new_observations,
+              "Whether visual PNP filters observations per camera")
+      .def_rw("vo_pnp_max_obs_per_camera", &Odometry::TrackOptions::vo_pnp_max_obs_per_camera,
+              "Maximum visual PNP observations per camera")
+      .def_rw("vo_pnp_point_z_thresh", &Odometry::TrackOptions::vo_pnp_point_z_thresh,
+              "Minimum visual PNP landmark z-depth")
+      .def_rw("vo_pnp_min_observations", &Odometry::TrackOptions::vo_pnp_min_observations,
+              "Minimum observations required for visual PNP")
+      .def_rw("vo_pnp_cost_thresh", &Odometry::TrackOptions::vo_pnp_cost_thresh, "Visual PNP convergence threshold")
+      .def_rw("inertial_stereo_pnp_lambda", &Odometry::TrackOptions::inertial_stereo_pnp_lambda,
+              "Inertial-mode stereo fallback PNP Levenberg-Marquardt damping factor")
+      .def_rw("inertial_stereo_pnp_huber", &Odometry::TrackOptions::inertial_stereo_pnp_huber,
+              "Inertial-mode stereo fallback PNP Huber robustifier scale")
+      .def_rw("inertial_stereo_pnp_max_iteration", &Odometry::TrackOptions::inertial_stereo_pnp_max_iteration,
+              "Maximum inertial-mode stereo fallback PNP solver iterations")
+      .def_rw("inertial_stereo_pnp_recalculate_cov", &Odometry::TrackOptions::inertial_stereo_pnp_recalculate_cov,
+              "Whether inertial-mode stereo fallback PNP recomputes covariance after a successful solve")
+      .def_rw("inertial_stereo_pnp_filter_new_observations",
+              &Odometry::TrackOptions::inertial_stereo_pnp_filter_new_observations,
+              "Whether inertial-mode stereo fallback PNP filters observations per camera")
+      .def_rw("inertial_stereo_pnp_max_obs_per_camera", &Odometry::TrackOptions::inertial_stereo_pnp_max_obs_per_camera,
+              "Maximum inertial-mode stereo fallback PNP observations per camera")
+      .def_rw("inertial_stereo_pnp_point_z_thresh", &Odometry::TrackOptions::inertial_stereo_pnp_point_z_thresh,
+              "Minimum inertial-mode stereo fallback PNP landmark z-depth")
+      .def_rw("inertial_stereo_pnp_min_observations", &Odometry::TrackOptions::inertial_stereo_pnp_min_observations,
+              "Minimum observations required for inertial-mode stereo fallback PNP")
+      .def_rw("inertial_stereo_pnp_cost_thresh", &Odometry::TrackOptions::inertial_stereo_pnp_cost_thresh,
+              "Inertial-mode stereo fallback PNP convergence threshold")
+      // Inertial PNP Settings
+      .def_rw("imu_pnp_robustifier_scale", &Odometry::TrackOptions::imu_pnp_robustifier_scale,
+              "Inertial PNP robustifier scale")
+      .def_rw("imu_pnp_max_iteration", &Odometry::TrackOptions::imu_pnp_max_iteration,
+              "Maximum inertial PNP solver iterations")
+      .def_rw("imu_pnp_min_observations", &Odometry::TrackOptions::imu_pnp_min_observations,
+              "Minimum observations required for inertial PNP")
+      // ICP Settings
+      .def_rw("icp_lambda", &Odometry::TrackOptions::icp_lambda, "ICP Levenberg-Marquardt damping factor")
+      .def_rw("icp_huber_vis", &Odometry::TrackOptions::icp_huber_vis,
+              "ICP visual reprojection Huber robustifier scale")
+      .def_rw("icp_huber_depth", &Odometry::TrackOptions::icp_huber_depth, "ICP depth Huber robustifier scale")
+      .def_rw("icp_max_iteration", &Odometry::TrackOptions::icp_max_iteration,
+              "Maximum ICP solver iterations without depth pyramid")
+      .def_rw("icp_cost_thresh", &Odometry::TrackOptions::icp_cost_thresh, "ICP convergence threshold")
+      .def_rw("icp_min_scale_level", &Odometry::TrackOptions::icp_min_scale_level,
+              "Finest ICP pyramid level to process")
+      .def_rw("icp_max_scale_level", &Odometry::TrackOptions::icp_max_scale_level,
+              "Coarsest ICP pyramid level to start from")
+      .def_rw("icp_num_iters_per_scale", &Odometry::TrackOptions::icp_num_iters_per_scale,
+              "ICP iterations per pyramid level")
+      .def_rw("icp_blending_alpha", &Odometry::TrackOptions::icp_blending_alpha,
+              "Blending weight between visual and depth ICP residuals")
       .def("__repr__", [](const Odometry::TrackOptions& o) {
         return nb::str("TrackOptions(num_desired_tracks={}, kf_survivor_from_last={}, ...)")
             .format(o.num_desired_tracks, o.kf_survivor_from_last);

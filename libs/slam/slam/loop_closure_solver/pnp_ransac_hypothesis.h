@@ -41,7 +41,7 @@ struct PnpRansacTrackData {
 };
 class PnpRansacHypothesis : public math::HypothesisBase<float, PnpRansacTrackData, Isometry3T, 3> {
 public:
-  PnpRansacHypothesis(const camera::Rig& rig) : pnp_(rig, pnp::PNPSettings::SLAMRansacSettings()), rig_(rig) {}
+  PnpRansacHypothesis(const camera::Rig& rig) : pnp_(rig), rig_(rig) {}
 
   void setThreshold(float reprojection_threshold) {
     square_reprojection_threshold_ = reprojection_threshold * reprojection_threshold;
@@ -75,7 +75,8 @@ protected:
     Matrix6T precision_local;
     Isometry3T rig_from_world_guess = initial_rig_from_world_;
 
-    bool rig_from_world_res_local = pnp_.solve(rig_from_world_guess, precision_local, pnp_observations, pnp_landmarks);
+    bool rig_from_world_res_local = pnp_.solve(rig_from_world_guess, precision_local, pnp_observations, pnp_landmarks,
+                                               pnp::PNPSettings::SLAMRansacSettings());
     if (!rig_from_world_res_local) {
       return false;
     }

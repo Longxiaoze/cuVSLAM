@@ -24,7 +24,10 @@
 #include "common/isometry.h"
 #include "common/vector_2t.h"
 #include "common/vector_3t.h"
+#include "pipelines/inertial_pnp.h"
 #include "pipelines/tracker_state_machine.h"
+#include "pnp/multicam_pnp.h"
+#include "pnp/visual_icp.h"
 #include "sba/sba_config.h"
 #include "sof/sof_multicamera_interface.h"
 
@@ -38,6 +41,10 @@ using MulticamObservations = std::unordered_map<CameraId, std::vector<camera::Ob
 struct SolverPerFrameSettings {
   sba::Settings sba;
   StateMachineSettings sm;
+  pnp::PNPSettings vo_pnp;
+  pnp::PNPSettings inertial_stereo_pnp = pnp::PNPSettings::InertialSettings();
+  InertialPnPSettings imu_pnp;
+  pnp::ICPSettings icp;
 };
 
 class ISFMSolver {

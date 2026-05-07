@@ -50,11 +50,10 @@ Mat23 projection_jacobian(const Vector3T& point_3d) {
 }
 }  // namespace
 
-VisualICP::VisualICP(const camera::Rig& rig, const ICPSettings& settings) : rig_(rig), settings_(settings) {
-  motion_prior_ = Matrix6T::Identity() * 5e-2;
-}
+VisualICP::VisualICP(const camera::Rig& rig) : rig_(rig) { motion_prior_ = Matrix6T::Identity() * 5e-2; }
 
-float VisualICP::reprojection_cost_and_hessian(Matrix6T& H, Vector6T& rhs, const Isometry3T& cam_from_world) const {
+float VisualICP::reprojection_cost_and_hessian(Matrix6T& H, Vector6T& rhs, const Isometry3T& cam_from_world,
+                                               const ICPSettings& settings) const {
   TRACE_EVENT ev = profiler_domain_.trace_event("reprojection_cost_and_hessian");
   float cost = 0;
 
@@ -76,13 +75,13 @@ float VisualICP::reprojection_cost_and_hessian(Matrix6T& H, Vector6T& rhs, const
     Vector2T r = point_cam.topRows(2) * one_over_z - obs.xy;
     float r_squared_norm = r.dot(obs.xy_info * r);
 
-    float w = math::ComputeDHuberLoss(r_squared_norm, settings_.huber_vis);
+    float w = math::ComputeDHuberLoss(r_squared_norm, settings.huber_vis);
     Mat26 J = projection_jacobian(point_cam) * cam_from_world.linear() * point_jacobian(landmark_world);
 
     H += J.transpose() * obs.xy_info * w * J;
     rhs += J.transpose() * obs.xy_info * w * r;
 
-    cost += math::ComputeHuberLoss(r_squared_norm, settings_.huber_vis);
+    cost += math::ComputeHuberLoss(r_squared_norm, settings.huber_vis);
   }
 
   if (count <= 0) {
@@ -94,7 +93,7 @@ float VisualICP::reprojection_cost_and_hessian(Matrix6T& H, Vector6T& rhs, const
 }
 
 float VisualICP::icp_hessian_and_cost(Matrix6T& H, Vector6T& rhs, const Isometry3T& cam_from_world,
-                                      uint8_t pyramid_level, const IcpInfo& inputs) const {
+                                      uint8_t pyramid_level, const ICPSettings& settings, const IcpInfo& inputs) const {
   TRACE_EVENT ev = profiler_domain_.trace_event("icp_hessian_and_cost");
 
   const auto& intrinsics = *rig_.intrinsics[inputs.depth_id];
@@ -135,7 +134,7 @@ float VisualICP::icp_hessian_and_cost(Matrix6T& H, Vector6T& rhs, const Isometry
 
   float cost;
   icp_tools_.match_and_reduce(cost, rhs, H, focal, principal, inputs[pyramid_level], cam_from_world,
-                              settings_.huber_depth, gpu_tracks);
+                              settings.huber_depth, gpu_tracks);
 
   // if (prev_delta_) {
   //   H += motion_prior_;
@@ -151,22 +150,23 @@ float VisualICP::icp_hessian_and_cost(Matrix6T& H, Vector6T& rhs, const Isometry
 }
 
 float VisualICP::total_cost_and_hessian(Matrix6T& H, Vector6T& rhs, const Isometry3T& rig_from_world,
-                                        uint8_t pyramid_level, const IcpInfo* depth_info) const {
+                                        uint8_t pyramid_level, const ICPSettings& settings,
+                                        const IcpInfo* depth_info) const {
   TRACE_EVENT ev = profiler_domain_.trace_event("total_cost_and_hessian");
 
   H.setZero();
   rhs.setZero();
 
-  float cost = reprojection_cost_and_hessian(H, rhs, rig_from_world);
+  float cost = reprojection_cost_and_hessian(H, rhs, rig_from_world, settings);
 
   if (depth_info) {
     Vector6T rhs_icp;
     Matrix6T H_icp;
-    float icp_cost = icp_hessian_and_cost(H_icp, rhs_icp, rig_from_world, pyramid_level, *depth_info);
+    float icp_cost = icp_hessian_and_cost(H_icp, rhs_icp, rig_from_world, pyramid_level, settings, *depth_info);
 
-    rhs = settings_.blending_alpha * rhs + (1 - settings_.blending_alpha) * rhs_icp;
-    H = settings_.blending_alpha * H + (1 - settings_.blending_alpha) * H_icp;
-    cost = settings_.blending_alpha * cost + (1 - settings_.blending_alpha) * icp_cost;
+    rhs = settings.blending_alpha * rhs + (1 - settings.blending_alpha) * rhs_icp;
+    H = settings.blending_alpha * H + (1 - settings.blending_alpha) * H_icp;
+    cost = settings.blending_alpha * cost + (1 - settings.blending_alpha) * icp_cost;
   }
 
   return cost;
@@ -174,8 +174,9 @@ float VisualICP::total_cost_and_hessian(Matrix6T& H, Vector6T& rhs, const Isomet
 
 using obs_ref = std::reference_wrapper<const camera::Observation>;
 
-bool VisualICP::solve_level(Isometry3T& rig_from_world, Matrix6T& static_info_exp, int level, int num_iters,
-                            const IcpInfo* depth_info, const Isometry3T& cam_from_rig) const {
+bool VisualICP::solve_level(Isometry3T& rig_from_world, Matrix6T& static_info_exp, int level,
+                            const ICPSettings& settings, const IcpInfo* depth_info,
+                            const Isometry3T& cam_from_rig) const {
   TRACE_EVENT ev = profiler_domain_.trace_event("solve");
 
   Matrix6T H;
@@ -186,7 +187,7 @@ bool VisualICP::solve_level(Isometry3T& rig_from_world, Matrix6T& static_info_ex
   // Compute cam_from_world from rig_from_world
   Isometry3T cam_from_world = cam_from_rig * param_r_from_world;
 
-  float initial_cost = total_cost_and_hessian(H, rhs, cam_from_world, level, depth_info);
+  float initial_cost = total_cost_and_hessian(H, rhs, cam_from_world, level, settings, depth_info);
   // if (initial_cost < 5e-3f) {
   //     // Nothing to minimize. We have a "pendulum" effect on still frames otherwise.
   //     static_info_exp.setIdentity();
@@ -196,7 +197,8 @@ bool VisualICP::solve_level(Isometry3T& rig_from_world, Matrix6T& static_info_ex
 
   Vector6T scaling = H.diagonal();
 
-  float lambda = settings_.lambda;
+  float lambda = settings.lambda;
+  const int num_iters = depth_info ? settings.num_iters_per_scale : settings.max_iteration;
   int num_iterations = 0;
   do {
     ++num_iterations;
@@ -215,7 +217,7 @@ bool VisualICP::solve_level(Isometry3T& rig_from_world, Matrix6T& static_info_ex
 
     Matrix6T H_guess;
     Vector6T rhs_guess;
-    float cost_guess = total_cost_and_hessian(H_guess, rhs_guess, cam_guess, level, depth_info);
+    float cost_guess = total_cost_and_hessian(H_guess, rhs_guess, cam_guess, level, settings, depth_info);
 
     float prr = (step.dot(H * step) + 2.f * lambda * step.dot(scaling.asDiagonal() * step)) / current_cost;
 
@@ -258,8 +260,14 @@ bool VisualICP::solve_level(Isometry3T& rig_from_world, Matrix6T& static_info_ex
 bool VisualICP::solve(Isometry3T& rig_from_world, Matrix6T& static_info_exp,
                       const std::vector<camera::Observation>& observations,
                       const std::unordered_map<TrackId, Vector3T>& landmarks,  // in map frame!
-                      const IcpInfo* depth_info) const {
+                      const ICPSettings& settings, const IcpInfo* depth_info) const {
   TRACE_EVENT ev = profiler_domain_.trace_event("solve");
+
+  if (settings.max_iteration < 0 || settings.min_scale_level < 0 || settings.max_scale_level < 0 ||
+      settings.num_iters_per_scale < 0) {
+    TraceError("ICPSettings count fields must be non-negative");
+    return false;
+  }
 
   // Get cam_from_rig for the depth camera (or camera 0 if no depth)
   CameraId depth_cam_id = depth_info ? depth_info->depth_id : 0;
@@ -298,7 +306,7 @@ bool VisualICP::solve(Isometry3T& rig_from_world, Matrix6T& static_info_exp,
       std::sort(obs_vec.begin(), obs_vec.end(),
                 [](const obs_ref& lhs, const obs_ref& rhs) { return lhs.get().id < rhs.get().id; });
 
-      const int num_pnp_tracks = std::min(max_obs_per_camera, obs_vec.size());
+      const size_t num_pnp_tracks = std::min(max_obs_per_camera, obs_vec.size());
       obs_vec.erase(obs_vec.begin() + num_pnp_tracks, obs_vec.end());
 
       std::move(obs_vec.begin(), obs_vec.end(), std::back_inserter(observations_));
@@ -313,19 +321,18 @@ bool VisualICP::solve(Isometry3T& rig_from_world, Matrix6T& static_info_exp,
 
   int level = 0;
   if (depth_info) {
-    level = std::min((int)depth_info->curr_image.getLevelsCount() - 1, settings_.max_scale_level);
+    level = std::min((int)depth_info->curr_image.getLevelsCount() - 1, settings.max_scale_level);
   }
 
   bool status = true;
 
   if (depth_info) {
-    while (level >= settings_.min_scale_level) {
-      status =
-          solve_level(rig_from_world, static_info_exp, level, settings_.num_iters_per_scale, depth_info, cam_from_rig);
+    while (level >= settings.min_scale_level) {
+      status = solve_level(rig_from_world, static_info_exp, level, settings, depth_info, cam_from_rig);
       level--;
     }
   } else {
-    status = solve_level(rig_from_world, static_info_exp, 0, settings_.max_iteration, nullptr, cam_from_rig);
+    status = solve_level(rig_from_world, static_info_exp, 0, settings, nullptr, cam_from_rig);
   }
 
   // prev_delta_ = std::nullopt;

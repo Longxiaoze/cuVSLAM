@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <map>
 #include <random>
 #include <vector>
@@ -33,12 +34,18 @@
 
 namespace cuvslam::pipelines {
 
+struct InertialPnPSettings {
+  float robustifier_scale = 0.4f;
+  int32_t max_iteration = 20;
+  int32_t min_observations = 25;
+};
+
 class InertialPnP {
 public:
   // OUT: pose, prev_pose - updated poses if success, otherwise it's guaranteed to be unchanged
   bool Solve(const imu::ImuCalibration& calib, const std::unordered_map<TrackId, Track>& tracks3d,
              const std::vector<camera::Observation>& observations, const camera::Rig& rig, const Vector3T& gravity_w,
-             sba_imu::Pose& prev_pose,  // non-const because of velocities updates
+             const InertialPnPSettings& settings, sba_imu::Pose& prev_pose,  // non-const because of velocities updates
              sba_imu::Pose& curr_pose) const;
 
 private:
