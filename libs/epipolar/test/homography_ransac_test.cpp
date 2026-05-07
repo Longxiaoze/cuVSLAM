@@ -15,7 +15,9 @@
  * of the software or derivative works thereof, you agree to be bound by this License.
  */
 
+#include <algorithm>
 #include <numeric>
+#include <random>
 
 #include "epipolar/homography_ransac.h"
 #include "epipolar/test/homography_test.h"
@@ -69,7 +71,8 @@ protected:
     // corrupted.
     std::vector<size_t> randomSelection(numPoints);
     std::iota(randomSelection.begin(), randomSelection.end(), 0);
-    std::random_shuffle(randomSelection.begin(), randomSelection.end());
+    std::mt19937 gen(::testing::UnitTest::GetInstance()->random_seed());
+    std::shuffle(randomSelection.begin(), randomSelection.end(), gen);
     randomSelection.resize(numCorrupted);
 
     for (size_t corruptedIndex : randomSelection) {
