@@ -212,6 +212,7 @@ void AsyncSlam::TrackResult(FrameId frameId, int64_t timestamp_ns, const odom::I
 }
 
 Isometry3T AsyncSlam::GetSlamPose() const {
+  std::lock_guard slam_guard(slam_mutex_);
   const auto may_be_tip = tail_.GetTip();
   if (!may_be_tip) {
     return Isometry3T::Identity();

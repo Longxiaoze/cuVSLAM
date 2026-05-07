@@ -149,15 +149,21 @@ void AsyncSlam::LocalizeInMapCmd::Execute(AsyncSlam& async_slam, FrameId, const 
   result.slam_from->RebuildSpatialIndex();
   result.slam_from->ReduceKeyframes();
 
-  CALLBACK_AND_RETURN_IF(!async_slam.tail_.UpdatePoseBySLAM(timestamp_ns_, result.pose_in_slam), finish_cb_, Pose,
+  bool tail_updated = false;
+  {
+    std::lock_guard slam_guard(async_slam.slam_mutex_);
+    tail_updated = async_slam.tail_.UpdatePoseBySLAM(timestamp_ns_, result.pose_in_slam);
+    if (tail_updated) {
+      std::swap(async_slam.slam_, result.slam_from);
+      AddFakeKeyframeForLocalizedPose(*async_slam.slam_, result.from_keyframe_id, result.pose_in_slam, timestamp_ns_,
+                                      images_, FrameInformationString(images_));
+      AddFakeKeyframeForLastTailPose(*async_slam.slam_, async_slam.tail_);
+    }
+  }
+  CALLBACK_AND_RETURN_IF(!tail_updated, finish_cb_, Pose,
                          "Localization timestamp is outside the SLAM retention window. LocalizeInMap can initialize "
                          "an empty SLAM state, but once SLAM has retained poses the timestamp must be within that "
                          "window.");
-
-  std::swap(async_slam.slam_, result.slam_from);
-  AddFakeKeyframeForLocalizedPose(*async_slam.slam_, result.from_keyframe_id, result.pose_in_slam, timestamp_ns_,
-                                  images_, FrameInformationString(images_));
-  AddFakeKeyframeForLastTailPose(*async_slam.slam_, async_slam.tail_);
 
   if (finish_cb_) {
     finish_cb_(Result<Pose>::Success(ConvertIsometryToPose(result.pose_in_slam)));

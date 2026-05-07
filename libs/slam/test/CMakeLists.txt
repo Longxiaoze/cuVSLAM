@@ -18,6 +18,7 @@ set(HEADERS
 
 # Source files
 set(SOURCES
+    async_slam_concurrency_test.cpp
     pgo_test.cpp
     p3p_test.cpp
     pnp_ransac_test.cpp
