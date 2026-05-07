@@ -7,12 +7,12 @@ CUVSLAM_MAP=/tmp/cuvslam_map
 CUVSLAM_DATASETS=/home/$USER/datasets
 
 source $CUVSLAM_BIN/cuvslam_vars.sh
-CUVSLAM_TRACKER=$CUVSLAM_BIN/bin/tracker
+CUVSLAM_LAUNCHER=$CUVSLAM_BIN/bin/cuvslam_api_launcher
+KITTI_EDEX=$CUVSLAM_DATASETS/kitti/06
 
 # save map
-$CUVSLAM_TRACKER -use_slam=true -lr_tracker=lk_horizontal \
- -edex=kitti/06 -edex_filename=stereo.edex \
- -slam_copy_to_database=$CUVSLAM_MAP
+$CUVSLAM_LAUNCHER -dataset=$KITTI_EDEX --cfg_enable_slam --cfg_enable_export --cfg_horizontal=true \
+  -output_map=$CUVSLAM_MAP
 
 for i in $(seq 1 100); do
   slow=$((RANDOM % 5001))
@@ -20,14 +20,11 @@ for i in $(seq 1 100); do
 
   echo "run ${i}/100: slam_simulate_slow_map_load=${slow} slam_load_and_localize_on_frame=${frame}"
 
-  $CUVSLAM_TRACKER \
+  $CUVSLAM_LAUNCHER \
     -max_fps=100 \
-    -slam_reproduce_mode=False \
-    -use_slam=true \
-    -edex=kitti/06 \
-    -edex_filename=stereo.edex \
-    -lr_tracker=lk_horizontal \
-    -cache_uncompressed=true \
+    --cfg_enable_slam --cfg_enable_export --cfg_horizontal=true \
+    -dataset=$KITTI_EDEX \
+    -slam_reproduce_mode=false \
     -slam_input_database=$CUVSLAM_MAP \
     -slam_localize_image=$CUVSLAM_DATASETS/kitti/06/image_0/000270.png \
     -slam_load_and_localize_timestamp=27 -slam_localize_guess_translation="[0.41739893, -4.497604, 290.2034]" \

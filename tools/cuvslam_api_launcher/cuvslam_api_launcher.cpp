@@ -15,6 +15,7 @@
  * of the software or derivative works thereof, you agree to be bound by this License.
  */
 
+#include <algorithm>
 #include <experimental/iterator>
 #include <filesystem>
 #include <fstream>
@@ -32,6 +33,7 @@
 #include "camera_rig_edex/repeated_camera_rig_edex.h"
 #include "camera_rig_edex/shuttle_camera_rig_edex.h"
 #include "common/coordinate_system.h"
+#include "common/json_to_eigen.h"
 #include "common/log.h"
 #include "common/stream.h"
 #include "common/time.h"
@@ -40,6 +42,7 @@
 #include "cuvslam/cuvslam2.h"
 #include "cuvslam/internal.h"
 #include "utils/cuvslam_yaml_config.h"
+#include "utils/image_loader.h"
 
 using namespace cuvslam;
 
@@ -99,6 +102,17 @@ DEFINE_int32(cfg_slam_max_map_size, kDefaultSlamCfg.max_map_size,
 DEFINE_double(cfg_max_frame_delta_s, kDefaultOdomCfg.max_frame_delta_s,
               "Set maximum camera frame time in seconds to warn users");
 DEFINE_bool(cfg_enable_export, false, "Enable export of observations & landmarks");
+// Tracker-compatible SLAM flags (load map + localize on a chosen edex frame)
+DEFINE_int32(slam_simulate_slow_map_load, 0, "Delay in ms invoked from localize start_cb (after map load begins).");
+DEFINE_string(slam_input_database, "", "Folder with SLAM map DB to localize in (LocalizeInMap).");
+DEFINE_string(slam_localize_image, "", "Optional image path for localization cam0; if empty, use current frame.");
+DEFINE_string(slam_localize_guess_translation, "",
+              "Guess translation only, format: \"[float, float, float]\" (identity rotation).");
+DEFINE_double(slam_load_and_localize_timestamp, -1,
+              "Timestamp in seconds for LocalizeInMap; if <=0 use current frame image timestamp.");
+DEFINE_int32(slam_load_and_localize_on_frame, -1, "If >=0, run LocalizeInMap when edex frame_number matches.");
+DEFINE_bool(slam_reproduce_mode, true, "If set: SLAM sync_mode (synced SLAM thread / reproduce semantics).");
+DEFINE_int32(max_pose_graph_nodes, 300, "SLAM pose graph node limit (maps to Slam::Config.max_map_size).");
 // image crop settings
 DEFINE_int32(border_top, 0, "top border to ignore in pixels (0 to use full frame)");
 DEFINE_int32(border_bottom, 0, "bottom border to ignore in pixels (0 to use full frame)");
@@ -315,6 +329,59 @@ Rig createRig(const edex::EdexFile& edex_file, const camera_rig_edex::ICameraRig
   return rig;
 }
 
+// Tracker-style load + LocalizeInMap on a specific edex frame (gflags select the frame and paths).
+bool RunSlamLoadAndLocalizeOnMatchingFrame(Slam& slam, const Slam::ImageSet& images) {
+  constexpr int64_t kNsPerSecond = 1000000000LL;
+  const int64_t timestamp_ns =
+      FLAGS_slam_load_and_localize_timestamp > 0
+          ? static_cast<int64_t>(FLAGS_slam_load_and_localize_timestamp * static_cast<double>(kNsPerSecond))
+          : images[0].timestamp_ns;
+
+  Vector3T translation = Vector3T::Zero();
+  if (!FLAGS_slam_localize_guess_translation.empty() &&
+      !ReadEigenFromString(FLAGS_slam_localize_guess_translation, translation)) {
+    TraceError("Invalid slam_localize_guess_translation");
+    return false;
+  }
+  Pose guess_pose;
+  guess_pose.translation = {translation.x(), translation.y(), translation.z()};
+
+  Slam::ImageSet localize_images;
+  std::vector<uint8_t> loaded_pixels;
+  if (!FLAGS_slam_localize_image.empty()) {
+    utils::ImageLoaderT loader;
+    VERIFY_TRACE(loader.load(FLAGS_slam_localize_image), "Failed to load slam_localize_image %s",
+                 FLAGS_slam_localize_image.c_str());
+    const ImageMatrix<uint8_t>& mat = loader.getImage();
+    loaded_pixels.resize(static_cast<size_t>(mat.size()));
+    std::copy_n(mat.data(), mat.size(), loaded_pixels.begin());
+    localize_images.push_back(
+        Image{{loaded_pixels.data(), static_cast<int32_t>(mat.cols()), static_cast<int32_t>(mat.rows()), 0,
+               Image::Encoding::MONO, ImageData::DataType::UINT8, false},
+              timestamp_ns,
+              0u});
+  } else {
+    localize_images = images;
+  }
+
+  Slam::LocalizationSettings loc_settings{};
+  loc_settings.horizontal_search_radius = 1.5f;
+  loc_settings.vertical_search_radius = 0.5f;
+  loc_settings.horizontal_step = 0.5f;
+  loc_settings.vertical_step = 0.25f;
+  loc_settings.angular_step_rads = 2 * PI / 36;
+
+  const Slam::LocalizeStartCB start_cb = [] {
+    if (FLAGS_slam_simulate_slow_map_load > 0) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(FLAGS_slam_simulate_slow_map_load));
+    }
+  };
+
+  slam.LocalizeInMap(FLAGS_slam_input_database, timestamp_ns, guess_pose, localize_images, loc_settings, start_cb,
+                     nullptr);
+  return true;
+}
+
 bool trackEdexDataSet(const std::string& data_folder, const Odometry::Config& odom_cfg, const Slam::Config& slam_cfg,
                       const Odometry::TrackOptions& track_options,
                       const std::map<std::string, std::string>& expert_params, const std::string& input_map_name,
@@ -454,6 +521,13 @@ bool trackEdexDataSet(const std::string& data_folder, const Odometry::Config& od
       odom->GetState(state);
       Pose slam_pose = slam->Track(state);
       printTsPose(out_slam_poses, true, pose_estimate.timestamp_ns, slam_pose);
+
+      if (FLAGS_slam_load_and_localize_on_frame >= 0 && !FLAGS_slam_input_database.empty() && !cur_meta.empty() &&
+          cur_meta[0].frame_number == FLAGS_slam_load_and_localize_on_frame) {
+        if (!RunSlamLoadAndLocalizeOnMatchingFrame(*slam, images)) {
+          return false;
+        }
+      }
     }
 
     if (odom_cfg.enable_observations_export) {
@@ -643,6 +717,8 @@ int main(int arg_c, char** arg_v) {
   // Apply SLAM config from flags (only when explicitly set)
   if (flag_is_set("cfg_sync_slam")) slam_cfg.sync_mode = FLAGS_cfg_sync_slam;
   if (flag_is_set("cfg_slam_max_map_size")) slam_cfg.max_map_size = FLAGS_cfg_slam_max_map_size;
+  if (flag_is_set("max_pose_graph_nodes")) slam_cfg.max_map_size = static_cast<uint32_t>(FLAGS_max_pose_graph_nodes);
+  if (flag_is_set("slam_reproduce_mode")) slam_cfg.sync_mode = FLAGS_slam_reproduce_mode;
   if (flag_is_set("cfg_planar")) slam_cfg.planar_constraints = FLAGS_cfg_planar;
 
   // Apply explicitly-set CLI flags into expert_params, overriding any YAML values.
