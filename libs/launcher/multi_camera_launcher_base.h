@@ -24,9 +24,21 @@
 namespace cuvslam::launcher {
 class MultiCameraBaseLauncher : public BaseLauncher {
 public:
-  MultiCameraBaseLauncher(ICameraRig& cameraRig, const odom::Settings& svo_settings);
+  // `auto_allow_stereo_track_for_depth` lets a subclass force the FIG to keep secondary edges
+  // to depth-aligned cameras even when the global -allow_stereo_track_for_depth flag is off.
+  // Used by MultisensorCameraLauncher (multisensor mode always wants those cross-camera tracks).
+  MultiCameraBaseLauncher(ICameraRig& cameraRig, const odom::Settings& svo_settings,
+                          bool auto_allow_stereo_track_for_depth = false);
+
+  // Predicate used by BaseLauncher::launch() to size the image pool and to decide which cameras
+  // get acquire_with_depth(). Membership in the resolved depth-id list (FIG-owned global flag).
+  bool isDepthCamera(CameraId id) const override;
 
 protected:
   camera::FrustumIntersectionGraph fig;
+  // Resolved at ctor from -fig_depth_camera_ids (owned by multi_camera_launcher_base.cpp);
+  // consumed by both the FIG and the BaseLauncher::launch() ingestion path so the two can never
+  // drift.
+  std::vector<CameraId> depth_ids_;
 };
 }  // namespace cuvslam::launcher

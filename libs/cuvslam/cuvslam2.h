@@ -409,8 +409,12 @@ public:
     /// Applied uniformly across all depth cameras. Default: 1.f.
     float depth_scale_factor = 1.f;
 
-    /// @brief Allow stereo 2D tracking between depth-aligned cameras and other cameras. Default: false.
-    bool enable_depth_stereo_tracking = false;
+    /// @brief Allow stereo 2D tracking between depth-aligned cameras and other cameras.
+    ///
+    /// Default: true. Multisensor mode benefits from cross-camera 2D tracks (depth-aligned
+    /// cameras are typically informative anchors), so we enable this by default. Set to false
+    /// to opt out.
+    bool enable_depth_stereo_tracking = true;
   };
 
   /**

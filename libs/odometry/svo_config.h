@@ -82,8 +82,9 @@ struct MultisensorSettings {
   float depth_scale_factor = 1.f;
 
   // Allow stereo 2D tracking between depth-aligned cameras and other cameras.
-  // Used only when depth_camera_ids is non-empty. Default: false.
-  bool enable_depth_stereo_tracking = false;
+  // Used only when depth_camera_ids is non-empty. Default: true (multisensor mode benefits
+  // from cross-camera 2D tracks; matches the public API default).
+  bool enable_depth_stereo_tracking = true;
 };
 
 struct Settings {

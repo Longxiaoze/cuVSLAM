@@ -175,7 +175,9 @@ bool TrackEdexApi2(const TestingSettings& settings, const cuvslam::Odometry::Con
     Slam slam{rig, tracker.GetPrimaryCameras(), slam_cfg};
 
     edex_rig->registerIMUCallback([&](const imu::ImuMeasurement& measurement) {
-      if (cfg.odometry_mode != Odometry::OdometryMode::Inertial) {
+      // Multisensor mode also needs IMU when the rig has one.
+      if (cfg.odometry_mode != Odometry::OdometryMode::Inertial &&
+          cfg.odometry_mode != Odometry::OdometryMode::Multisensor) {
         return;
       }
       cuvslam::ImuMeasurement imu_measurement;
@@ -250,7 +252,22 @@ bool TrackEdexApi2(const TestingSettings& settings, const cuvslam::Odometry::Con
         }
       }
 
-      auto pose_estimate = tracker.Track(images, masks);
+      // Build depth ImageSet for modes that consume depth (RGBD, Multisensor).
+      cuvslam::Odometry::ImageSet depths;
+      for (const auto& [cid, dsrc] : depth_sources) {
+        if (dsrc.data == nullptr) continue;
+        const auto meta_it = cur_meta.find(cid);
+        if (meta_it == cur_meta.end()) continue;
+        const auto& meta = meta_it->second;
+        const auto dtype =
+            (dsrc.type == ImageSource::Type::F32) ? ImageData::DataType::FLOAT32 : ImageData::DataType::UINT16;
+        depths.emplace_back(Image{{dsrc.data, meta.shape.width, meta.shape.height, dsrc.pitch, Image::Encoding::MONO,
+                                   dtype, false /* is_gpu_mem */},
+                                  meta.timestamp,
+                                  static_cast<uint32_t>(cid)});
+      }
+
+      auto pose_estimate = tracker.Track(images, masks, depths);
       if (!pose_estimate.world_from_rig.has_value()) {
         TraceWarning("CUVSLAM_Track(): Tracking lost at frame %zu.", frame);
         continue;

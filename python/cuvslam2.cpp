@@ -429,7 +429,8 @@ NB_MODULE(pycuvslam, m) {
       .def_rw("depth_scale_factor", &Odometry::MultisensorSettings::depth_scale_factor,
               "Scale factor for depth measurements (applied uniformly to every depth camera).")
       .def_rw("enable_depth_stereo_tracking", &Odometry::MultisensorSettings::enable_depth_stereo_tracking,
-              "Allow stereo 2D tracking between depth-aligned cameras and other cameras.")
+              "Allow stereo 2D tracking between depth-aligned cameras and other cameras. "
+              "Default: True (multisensor mode benefits from cross-camera 2D tracks).")
       .def("__repr__", [](const Odometry::MultisensorSettings& s) {
         return nb::str(
                    "cuvslam.Odometry.MultisensorSettings(depth_camera_ids={}, depth_scale_factor={}, "

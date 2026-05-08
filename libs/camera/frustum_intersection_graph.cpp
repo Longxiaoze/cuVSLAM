@@ -259,21 +259,16 @@ void FrustumIntersectionGraph::set_manual_mode(const std::vector<CameraGraphNode
   }
 }
 
-FrustumIntersectionGraph::FrustumIntersectionGraph(const camera::Rig& rig, MulticameraMode mode,
-                                                   const std::vector<CameraId>& depth_ids,
-                                                   bool allow_stereo_track_for_depth,
-                                                   const MulticamManualSetup& manual_setup)
-    : FrustumIntersectionGraph(BuildCameraGraph(rig), mode, depth_ids, allow_stereo_track_for_depth, manual_setup) {}
+FrustumIntersectionGraph::FrustumIntersectionGraph(const camera::Rig& rig, const FigSettings& settings)
+    : FrustumIntersectionGraph(BuildCameraGraph(rig), settings) {}
 
-FrustumIntersectionGraph::FrustumIntersectionGraph(const std::vector<CameraGraphNode>& graph, MulticameraMode mode,
-                                                   const std::vector<CameraId>& depth_ids,
-                                                   bool allow_stereo_track_for_depth,
-                                                   const MulticamManualSetup& manual_setup)
-    : depth_ids_(depth_ids) {
-  TraceErrorIf((mode == MulticameraMode::Manual) == manual_setup.empty(),
+FrustumIntersectionGraph::FrustumIntersectionGraph(const std::vector<CameraGraphNode>& graph,
+                                                   const FigSettings& settings)
+    : depth_ids_(settings.depth_ids) {
+  TraceErrorIf((settings.mode == MulticameraMode::Manual) == settings.manual_setup.empty(),
                "manual_setup should be provided if mode is manual");
 
-  switch (mode) {
+  switch (settings.mode) {
     case MulticameraMode::Precision:
       set_precision_mode(graph);
       break;
@@ -283,7 +278,7 @@ FrustumIntersectionGraph::FrustumIntersectionGraph(const std::vector<CameraGraph
       break;
 
     case MulticameraMode::Manual:
-      set_manual_mode(graph, manual_setup);
+      set_manual_mode(graph, settings.manual_setup);
       break;
 
     case MulticameraMode::Moderate:
@@ -292,7 +287,8 @@ FrustumIntersectionGraph::FrustumIntersectionGraph(const std::vector<CameraGraph
       break;
   }
 
-  if (!allow_stereo_track_for_depth && !depth_ids.empty()) {
+  const std::vector<CameraId>& depth_ids = settings.depth_ids;
+  if (!settings.allow_stereo_track_for_depth && !depth_ids.empty()) {
     for (auto& [_, sec_cams] : secondary_from_primary_) {
       std::vector<CameraId> cams_to_remove;
       for (CameraId sec_cam : sec_cams) {

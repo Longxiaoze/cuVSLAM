@@ -233,15 +233,33 @@ ErrorCode BaseLauncher::launch() {
       }
 
       if (!image_manager_.is_initialized()) {
-        size_t num_depth_images = cameraRig_.getCamerasWithDepth().size();
+        // Pool size tracks the launcher-resolved depth-id list (isDepthCamera), not the rig's
+        // raw advertisement, so cameras the user excluded via -fig_depth_camera_ids do not
+        // pre-allocate depth slots they will never use.
+        size_t num_depth_images = 0;
+        for (int32_t cam_id = 0; cam_id < rig.num_cameras; ++cam_id) {
+          if (isDepthCamera(static_cast<CameraId>(cam_id))) {
+            ++num_depth_images;
+          }
+        }
         image_manager_.init(curr_meta[0].shape, (rig.num_cameras - num_depth_images) * 4, FLAGS_use_gpu,
                             num_depth_images * 4);
+      }
+
+      // Drop depth entries the launcher is not configured to use, so downstream odometry
+      // (e.g. MultisensorOdometry::track) never sees depth from cameras the user excluded.
+      for (auto it = depth_sources.begin(); it != depth_sources.end();) {
+        if (!isDepthCamera(it->first)) {
+          it = depth_sources.erase(it);
+        } else {
+          ++it;
+        }
       }
 
       for (const auto& [camera_id, meta] : curr_meta) {
         sof::ImageContextPtr ptr;
 
-        if (depth_sources.find(camera_id) != depth_sources.end()) {
+        if (isDepthCamera(camera_id)) {
           ptr = image_manager_.acquire_with_depth();
         } else {
           ptr = image_manager_.acquire();

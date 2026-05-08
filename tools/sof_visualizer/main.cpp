@@ -42,7 +42,12 @@ DEFINE_bool(show_cov, true, "Show covariances of observations");
 
 DEFINE_double(image_drop_rate, 0.0, "Image drop rate");
 DEFINE_string(image_drop_type, "steady", "Image dropping type: steady, normal, sticky");
-DEFINE_bool(stereo_track_for_depth, false, "Use stereo tracking for the RGB camera");
+
+// Local copy of the FIG-shaping flag. The launcher binaries declare their own copy in
+// libs/launcher/multi_camera_launcher_base.cpp; the visualizer doesn't link the launcher TU
+// and is a self-contained top-level binary, so we define it here directly.
+DEFINE_bool(allow_stereo_track_for_depth, false,
+            "Allow stereo 2D tracking between depth-aligned cameras and other cameras.");
 
 using namespace cuvslam;
 
@@ -125,8 +130,18 @@ static void DoStereoTrack(const std::string& edexFile, std::string outputFolder,
     cam_rig.camera_from_rig[cam] = rig.getExtrinsic(cam);
   }
 
-  camera::FrustumIntersectionGraph fig(cam_rig, sof_settings.multicam_mode, {0}, FLAGS_stereo_track_for_depth,
-                                       sof_settings.multicam_setup);
+  // The visualizer only consumes legacy stereo edex datasets where camera 0 is the convention-
+  // ally anchored reference camera, so we tag {0} as the depth-id set unconditionally. This
+  // matches the pre-FigSettings refactor behavior and is intentional for this debug tool — if
+  // a future use case needs a configurable depth camera here, expose a `-cfg_depth_camera`
+  // flag and feed it into depth_ids below.
+  camera::FigSettings fig_settings{
+      /*.mode=*/sof_settings.multicam_mode,
+      /*.depth_ids=*/{0},
+      /*.allow_stereo_track_for_depth=*/FLAGS_allow_stereo_track_for_depth,
+      /*.manual_setup=*/sof_settings.multicam_setup,
+  };
+  camera::FrustumIntersectionGraph fig(cam_rig, fig_settings);
 
   const auto& primary_cams = fig.primary_cameras();
   std::vector<bool> is_primary(static_cast<size_t>(cam_rig.num_cameras), false);

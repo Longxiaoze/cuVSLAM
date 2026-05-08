@@ -22,45 +22,28 @@
 
 #include "gflags/gflags.h"
 
-// Dedicated sensor-set selection flags for the multisensor launcher. They map 1:1 to
-// odom::MultisensorSettings and override anything pre-set on svo_settings.multisensor_settings.
-// "auto" for the depth list means: take all cameras the rig reports as having depth.
+// Multisensor flags. The depth-id list and stereo-tracking-for-depth toggle are NOT here —
+// they're owned by libs/launcher/multi_camera_launcher_base.cpp as -fig_depth_camera_ids and
+// -allow_stereo_track_for_depth (single source of truth for every launcher that builds a FIG).
 DEFINE_bool(multisensor_use_imu, false,
             "Treat the rig as having a single IMU. When true the launcher auto-switches "
             "sba_mode to inertial and registers the IMU callback.");
-DEFINE_string(multisensor_depth_cameras, "auto",
-              "Comma-separated camera ids that supply depth (e.g. '0,2'). 'auto' uses all "
-              "cameras with depth from the rig; 'none' disables depth.");
 DEFINE_double(multisensor_depth_scale, 1.0, "Depth scale factor (raw depth divided by this value yields meters)");
-DEFINE_bool(multisensor_enable_depth_stereo_tracking, false,
-            "Allow stereo 2D tracking between depth-aligned cameras and other cameras");
 
 namespace cuvslam::launcher {
-namespace {
-
-// Parse a comma-separated list of camera ids.
-std::vector<int32_t> ParseCamIds(const std::string& v) {
-  std::vector<int32_t> out;
-  std::stringstream ss(v);
-  std::string tok;
-  while (std::getline(ss, tok, ',')) {
-    if (!tok.empty()) out.push_back(std::stoi(tok));
-  }
-  return out;
-}
-
-}  // namespace
 
 MultisensorCameraLauncher::MultisensorCameraLauncher(ICameraRig& cameraRig, const odom::Settings& svo_settings)
-    : MultiCameraBaseLauncher(cameraRig, svo_settings) {
+    // Multisensor mode always wants stereo tracking between depth-aligned cameras and other
+    // cameras, so force the FIG to keep those edges regardless of the global flag.
+    : MultiCameraBaseLauncher(cameraRig, svo_settings, /*auto_allow_stereo_track_for_depth=*/true) {
   TraceMessage("Multisensor launcher is selected");
 }
 
 void MultisensorCameraLauncher::SetupTracker(const odom::Settings& svo_settings, bool use_gpu) {
-  // Resolve sensor-set selections. The gflag values override anything pre-set on
-  // svo_settings.multisensor_settings only when the flag was set on the command line
-  // (i.e. is not at its default), so library callers driving the launcher programmatically
-  // can configure sensors without touching gflags.
+  // Resolve only the non-FIG flags here. depth_camera_ids and enable_depth_stereo_tracking are
+  // already baked into the FIG (built in the base ctor) and into the depth-ingestion path
+  // (BaseLauncher::launch -> isDepthCamera). We mirror them into MultisensorSettings so
+  // MultisensorOdometry sees the exact same set the FIG and the launcher were built with.
   odom::Settings effective = svo_settings;
   odom::MultisensorSettings& ms = effective.multisensor_settings;
 
@@ -72,30 +55,20 @@ void MultisensorCameraLauncher::SetupTracker(const odom::Settings& svo_settings,
     ms.with_imu = true;
   }
 
-  if (!gflags::GetCommandLineFlagInfoOrDie("multisensor_depth_cameras").is_default) {
-    if (FLAGS_multisensor_depth_cameras == "none") {
-      ms.depth_camera_ids.clear();
-    } else if (FLAGS_multisensor_depth_cameras == "auto") {
-      const auto rig_depth = cameraRig_.getCamerasWithDepth();
-      ms.depth_camera_ids.clear();
-      ms.depth_camera_ids.reserve(rig_depth.size());
-      for (CameraId id : rig_depth) ms.depth_camera_ids.push_back(static_cast<int32_t>(id));
-    } else {
-      ms.depth_camera_ids = ParseCamIds(FLAGS_multisensor_depth_cameras);
-    }
-  } else if (ms.depth_camera_ids.empty()) {
-    // No programmatic override and no flag override: default to all rig depth cameras.
-    const auto rig_depth = cameraRig_.getCamerasWithDepth();
-    ms.depth_camera_ids.reserve(rig_depth.size());
-    for (CameraId id : rig_depth) ms.depth_camera_ids.push_back(static_cast<int32_t>(id));
-  }
-
   if (!gflags::GetCommandLineFlagInfoOrDie("multisensor_depth_scale").is_default) {
     ms.depth_scale_factor = static_cast<float>(FLAGS_multisensor_depth_scale);
   }
-  if (!gflags::GetCommandLineFlagInfoOrDie("multisensor_enable_depth_stereo_tracking").is_default) {
-    ms.enable_depth_stereo_tracking = FLAGS_multisensor_enable_depth_stereo_tracking;
+
+  // Sync depth_camera_ids with the FIG/ingestion source of truth (resolved once in the base ctor).
+  ms.depth_camera_ids.clear();
+  ms.depth_camera_ids.reserve(depth_ids_.size());
+  for (CameraId id : depth_ids_) {
+    ms.depth_camera_ids.push_back(static_cast<int32_t>(id));
   }
+  // Multisensor mode always allows stereo 2D tracking between depth-aligned cameras and other
+  // cameras (the launcher passed auto_allow_stereo_track_for_depth=true to the base ctor; mirror
+  // that here so the odometry settings agree with the FIG topology).
+  ms.enable_depth_stereo_tracking = true;
 
   // Auto-switch SBA mode to inertial when an IMU is part of the configured sensor set.
   // Pure-visual multisensor leaves the mode untouched (caller-selected, e.g. OriginalGPU).
@@ -110,7 +83,9 @@ void MultisensorCameraLauncher::SetupTracker(const odom::Settings& svo_settings,
     std::stringstream s;
     s << "Multisensor sensor set: imu=" << (ms.with_imu ? "yes" : "no") << ", depth_cameras=[";
     for (size_t i = 0; i < ms.depth_camera_ids.size(); ++i) {
-      if (i > 0) s << ",";
+      if (i > 0) {
+        s << ",";
+      }
       s << ms.depth_camera_ids[i];
     }
     s << "], depth_scale=" << ms.depth_scale_factor

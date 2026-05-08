@@ -78,6 +78,12 @@ public:
 
   void updateGTPoses(const Isometry3TVector& poses);
 
+  // Predicate that controls runtime depth ingestion: pool sizing and acquire_with_depth() path
+  // in BaseLauncher::launch(). Default: false (no camera supplies depth). Subclasses that
+  // care about depth (RGBD, Multisensor, multi-RGBD) override this to test membership in the
+  // launcher's resolved depth-id list, so the runtime ingestion never drifts from the FIG.
+  virtual bool isDepthCamera(CameraId /*id*/) const { return false; }
+
 protected:
   virtual void SetupTracker(const odom::Settings& svo_settings, bool use_gpu) = 0;
 

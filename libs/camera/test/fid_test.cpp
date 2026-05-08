@@ -54,7 +54,9 @@ protected:
 class FIDTest2 : public testing::TestWithParam<MulticameraMode> {};
 
 TEST_F(FIDTest, FID_Precision) {
-  FrustumIntersectionGraph fid(graph, MulticameraMode::Precision);
+  FigSettings settings;
+  settings.mode = MulticameraMode::Precision;
+  FrustumIntersectionGraph fid(graph, settings);
 
   const auto& prim_cams = fid.primary_cameras();
 
@@ -70,7 +72,9 @@ TEST_F(FIDTest, FID_Precision) {
 }
 
 TEST_F(FIDTest, FID_Moderate) {
-  FrustumIntersectionGraph fid(graph, MulticameraMode::Moderate);
+  FigSettings settings;
+  settings.mode = MulticameraMode::Moderate;
+  FrustumIntersectionGraph fid(graph, settings);
 
   const auto& prim_cams = fid.primary_cameras();
 
@@ -98,7 +102,9 @@ TEST_F(FIDTest, FID_Moderate) {
 }
 
 TEST_F(FIDTest, FID_Performance) {
-  FrustumIntersectionGraph fid(graph, MulticameraMode::Performance);
+  FigSettings settings;
+  settings.mode = MulticameraMode::Performance;
+  FrustumIntersectionGraph fid(graph, settings);
 
   const auto& prim_cams = fid.primary_cameras();
 
@@ -150,29 +156,37 @@ TEST_F(FIDTest, FID_Performance) {
 }
 
 TEST_F(FIDTest, ManualSetupChecks) {
-  EXPECT_THROW(FrustumIntersectionGraph(graph, MulticameraMode::Manual, {}), std::runtime_error);
+  auto make_settings = [](const MulticamManualSetup& manual) {
+    return FigSettings{MulticameraMode::Manual, /*depth_ids=*/{0}, /*allow_stereo_track_for_depth=*/false, manual};
+  };
+
+  {
+    FigSettings settings_no_manual;
+    settings_no_manual.mode = MulticameraMode::Manual;
+    EXPECT_THROW(FrustumIntersectionGraph(graph, settings_no_manual), std::runtime_error);
+  }
 
   MulticamManualSetup full_setup{{1, 2, 4, 5}, {0, 2, 3, 5}, {0, 1, 3, 4}, {1, 2, 4, 5}, {0, 2, 3, 5}, {0, 1, 3, 4}};
-  EXPECT_NO_THROW(FrustumIntersectionGraph(graph, MulticameraMode::Manual, {0}, false, full_setup));
+  EXPECT_NO_THROW(FrustumIntersectionGraph(graph, make_settings(full_setup)));
 
   MulticamManualSetup valid_setup{{1, 2}, {0, 2}, {}, {4}, {}, {0}};
-  EXPECT_NO_THROW(FrustumIntersectionGraph(graph, MulticameraMode::Manual, {0}, false, valid_setup));
+  EXPECT_NO_THROW(FrustumIntersectionGraph(graph, make_settings(valid_setup)));
 
   MulticamManualSetup too_short{{1}, {2}, {3}};
-  EXPECT_THROW(FrustumIntersectionGraph(graph, MulticameraMode::Manual, {0}, false, too_short), std::runtime_error);
+  EXPECT_THROW(FrustumIntersectionGraph(graph, make_settings(too_short)), std::runtime_error);
 
   MulticamManualSetup too_long{{1}, {2}, {3}, {4}, {5}, {0}, {0} /*!*/};
-  EXPECT_THROW(FrustumIntersectionGraph(graph, MulticameraMode::Manual, {0}, false, too_long), std::runtime_error);
+  EXPECT_THROW(FrustumIntersectionGraph(graph, make_settings(too_long)), std::runtime_error);
 
   MulticamManualSetup wrong_id{{1}, {2}, {3}, {4}, {5}, {6 /*!*/}};
-  EXPECT_THROW(FrustumIntersectionGraph(graph, MulticameraMode::Manual, {0}, false, wrong_id), std::runtime_error);
+  EXPECT_THROW(FrustumIntersectionGraph(graph, make_settings(wrong_id)), std::runtime_error);
 
   MulticamManualSetup link_itself{{0 /*!*/}, {2}, {3}, {4}, {5}, {0}};
-  EXPECT_THROW(FrustumIntersectionGraph(graph, MulticameraMode::Manual, {0}, false, link_itself), std::runtime_error);
+  EXPECT_THROW(FrustumIntersectionGraph(graph, make_settings(link_itself)), std::runtime_error);
 
   MulticamManualSetup link_not_in_graph{{3 /*!*/}, {2}, {3}, {4}, {5}, {0}};
   // only a warning is printed
-  EXPECT_NO_THROW(FrustumIntersectionGraph(graph, MulticameraMode::Manual, {0}, false, link_not_in_graph));
+  EXPECT_NO_THROW(FrustumIntersectionGraph(graph, make_settings(link_not_in_graph)));
 }
 
 std::vector<CameraId> PrimaryCameras(const MulticamManualSetup& setup) {
@@ -194,7 +208,8 @@ TEST_F(FIDTest, DISABLED_ManualValidSetups) {
   for (size_t i = 0; i < cases.size(); i++) {
     SCOPED_TRACE("Setup " + std::to_string(i));
     const auto& setup = cases[i];
-    FrustumIntersectionGraph fig{graph, MulticameraMode::Manual, {0}, false, setup};
+    FrustumIntersectionGraph fig{graph, FigSettings{MulticameraMode::Manual, /*depth_ids=*/{0},
+                                                    /*allow_stereo_track_for_depth=*/false, setup}};
     EXPECT_EQ(fig.primary_cameras(), PrimaryCameras(setup));
     for (size_t cam_id = 0; cam_id < setup.size(); cam_id++) {
       if (setup[cam_id].empty()) {
@@ -223,7 +238,9 @@ TEST_P(FIDTest2, DISABLED_SimulatorEdex) {
     rig.camera_from_rig[i] = camera_rig.getExtrinsic(i).inverse();
     rig.intrinsics[i] = &(camera_rig.getIntrinsic(i));
   }
-  camera::FrustumIntersectionGraph fig(rig, mode);
+  camera::FigSettings settings;
+  settings.mode = mode;
+  camera::FrustumIntersectionGraph fig(rig, settings);
 
   ASSERT_FALSE(fig.is_valid());
 }

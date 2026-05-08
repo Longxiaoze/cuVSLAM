@@ -19,7 +19,6 @@
 
 #include <string>
 #include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 #include "camera/rig.h"
@@ -43,6 +42,26 @@ using MulticamManualSetup = std::vector<std::vector<CameraId>>;
 MulticameraMode ParseMulticameraMode(const std::string& mode,
                                      MulticameraMode default_mode = MulticameraMode::Performance);
 
+// User-facing settings that shape the FrustumIntersectionGraph topology. Grouped into a single
+// struct so the camera library can stay free of any global-flag plumbing while still letting
+// callers (launchers, tools, tests) drive every knob independently.
+struct FigSettings {
+  MulticameraMode mode = MulticameraMode::Performance;
+  // Cameras that supply depth. When non-empty, the FIG can optionally drop secondary edges that
+  // land on these cameras (controlled by allow_stereo_track_for_depth) and guarantees that every
+  // depth camera ends up as a primary, even when it has no stereo partners.
+  std::vector<CameraId> depth_ids;
+  // If false, secondary edges that land on a depth camera are removed (the depth camera is only
+  // tracked monocularly + via depth). If true, the FIG keeps those cross-camera tracks.
+  // Default: true — matches Multisensor mode's enable_depth_stereo_tracking default
+  // (multisensor benefits from cross-camera 2D tracks). Note: RGBDSettings defaults this to
+  // false in the public API; that path explicitly forwards the per-mode value into
+  // FigSettings, so the default here only affects callers who don't set the field.
+  bool allow_stereo_track_for_depth = true;
+  // Required when mode == MulticameraMode::Manual; ignored otherwise.
+  MulticamManualSetup manual_setup;
+};
+
 // Building a camera graph without the need for manual assumption hard-coding of the camera configuration.
 // It leverages camera intrinsic, distortion and extrinsic calibrations in order to check overlapping between
 // the camera frustums and define the stereo pairs.
@@ -63,14 +82,9 @@ public:
 
   FrustumIntersectionGraph() = default;
 
-  FrustumIntersectionGraph(const camera::Rig& rig, MulticameraMode mode = MulticameraMode::Performance,
-                           const std::vector<CameraId>& depth_ids = {}, bool allow_stereo_track_for_depth = false,
-                           const MulticamManualSetup& manual_setup = {});
+  FrustumIntersectionGraph(const camera::Rig& rig, const FigSettings& settings);
 
-  FrustumIntersectionGraph(const std::vector<CameraGraphNode>& graph,
-                           MulticameraMode mode = MulticameraMode::Performance,
-                           const std::vector<CameraId>& depth_ids = {}, bool allow_stereo_track_for_depth = false,
-                           const MulticamManualSetup& manual_setup = {});
+  FrustumIntersectionGraph(const std::vector<CameraGraphNode>& graph, const FigSettings& settings);
 
   // primary camera is tracked on every frame
   const std::vector<CameraId>& primary_cameras() const;

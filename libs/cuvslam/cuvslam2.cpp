@@ -246,6 +246,14 @@ void CheckRectifiedStereoCamera(const cuvslam::Rig& rig) {
 
 void CheckImuCalibration(const ImuCalibration& imu_calibration) {
   Eigen::Quaternionf quat{imu_calibration.rig_from_imu.rotation.data()};
+  // The user-supplied quaternion may be only near-unit (numerical drift in
+  // upstream calibrations is common, ~1e-4 is normal).  Normalise before
+  // building the rotation matrix so the orthonormality check below tests
+  // geometric validity, not float precision.  We only reject when the
+  // norm itself is degenerate (zero or NaN).
+  THROW_INVALID_ARG_IF(!std::isfinite(quat.norm()) || quat.norm() < 1e-6f,
+                       "IMU Calibration: rig from IMU rotation quaternion is degenerate");
+  quat.normalize();
   Matrix3T rot = quat.toRotationMatrix();
 
   THROW_INVALID_ARG_IF(rot.array().isNaN().any() ||
@@ -525,9 +533,13 @@ Odometry::Odometry(const Rig& rig, const Config& cfg) {
   } else {
     depth_ids.push_back(static_cast<CameraId>(0));
   }
-  tracker->fig =
-      camera::FrustumIntersectionGraph(tracker->rig, svo_settings.sof_settings.multicam_mode, depth_ids,
-                                       enable_depth_stereo_tracking_fig, svo_settings.sof_settings.multicam_setup);
+  camera::FigSettings fig_settings{
+      /*.mode=*/svo_settings.sof_settings.multicam_mode,
+      /*.depth_ids=*/depth_ids,
+      /*.allow_stereo_track_for_depth=*/enable_depth_stereo_tracking_fig,
+      /*.manual_setup=*/svo_settings.sof_settings.multicam_setup,
+  };
+  tracker->fig = camera::FrustumIntersectionGraph(tracker->rig, fig_settings);
   THROW_INVALID_ARG_IF(!tracker->fig.is_valid(),
                        "Bad calibration. cuVSLAM needs at least one stereo pair available for "
                        "multicamera/inertial/multisensor modes.");
