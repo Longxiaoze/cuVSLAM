@@ -868,10 +868,9 @@ public:
    *   `sm.gravity_update_period_ns`, `sm.max_integration_time_ns`, `sm.min_num_kf_for_gravity`,
    *   `sm.min_time_period_ns`, `sm.max_time_period_ns`
    *
-   * @param[in] parameters Pointer to an array of key/value pairs to apply.
-   * @param[in] count      Number of entries in @p parameters.
+   * @param[in] parameters Key/value pairs to apply.
    */
-  void ApplyExpertParameters(const ExpertParameter* parameters, std::size_t count);
+  void ApplyExpertParameters(const std::vector<ExpertParameter>& parameters);
 
 private:
   class Impl;

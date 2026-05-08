@@ -412,7 +412,7 @@ bool trackEdexDataSet(const std::string& data_folder, const Odometry::Config& od
     for (const auto& [k, v] : expert_params) {
       params.push_back({k, v});
     }
-    odom->ApplyExpertParameters(params.data(), params.size());
+    odom->ApplyExpertParameters(params);
   }
   TraceMessage("Odometry tracker created");
 

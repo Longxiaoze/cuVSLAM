@@ -39,6 +39,7 @@ set(HEADERS
     json_to_eigen.h
     log_types.h
     log.h
+    parse_utils.h
     rerun.h
     rotation_utils.h
     statistic.h
@@ -60,6 +61,7 @@ set(SOURCES
     imu_calibration.cpp
     imu_measurement.cpp
     log.cpp
+    parse_utils.cpp
     tga.cpp
     )
 

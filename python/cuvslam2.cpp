@@ -741,7 +741,7 @@ NB_MODULE(pycuvslam, m) {
               values.push_back(nb::cast<std::string>(v));
               params.push_back({keys.back(), values.back()});
             }
-            self.ApplyExpertParameters(params.data(), params.size());
+            self.ApplyExpertParameters(params);
           },
           nb::arg("parameters"),
           "Apply expert parameters by string key/value pairs.\n\n"

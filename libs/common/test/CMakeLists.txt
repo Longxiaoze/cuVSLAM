@@ -19,6 +19,7 @@ set(SOURCES
     error_test.cpp
     eign_test.cpp
     image_dropper_test.cpp
+    parse_utils_test.cpp
     rotation_utils_test.cpp
     stream_test.cpp
     )
