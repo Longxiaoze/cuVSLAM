@@ -49,6 +49,11 @@ int64_t ShuttleCameraRigEdex::adjust_timestamp(int64_t timestamp) {
 
 ErrorCode ShuttleCameraRigEdex::getFrame(Sources& sources, Metas& metas, Sources& masks_sources,
                                          DepthSources& depth_sources) {
+  sources.clear();
+  metas.clear();
+  masks_sources.clear();
+  depth_sources.clear();
+
   if (!check_end_of_sequence()) {
     return ErrorCode::E_Bounds;
   }

@@ -476,28 +476,38 @@ bool trackEdexDataSet(const std::string& data_folder, const Odometry::Config& od
     std::vector<Image> images;
     std::vector<Image> masks;
     std::vector<Image> depths;
-    for (size_t i = 0; i < cur_sources.size(); i++) {
-      auto&& src = cur_sources[i];
-      auto&& mask_src = masks_sources[i];
-      auto&& meta = cur_meta[i];
+    std::vector<CameraId> frame_camera_ids;
+    frame_camera_ids.reserve(cur_sources.size());
+    for (const auto& source_entry : cur_sources) {
+      frame_camera_ids.push_back(source_entry.first);
+    }
+    std::sort(frame_camera_ids.begin(), frame_camera_ids.end());
+
+    for (CameraId cam_id : frame_camera_ids) {
+      const auto& src = cur_sources.at(cam_id);
+      const auto& meta = cur_meta.at(cam_id);
       images.emplace_back(Image{{src.data, meta.shape.width, meta.shape.height, src.pitch,
                                  static_cast<Image::Encoding>(src.image_encoding), ImageData::DataType::UINT8, false},
                                 meta.timestamp,
-                                static_cast<uint32_t>(i)});
-      if (mask_src.data != nullptr) {
+                                static_cast<uint32_t>(cam_id)});
+      const auto mask_it = masks_sources.find(cam_id);
+      if (mask_it != masks_sources.end() && mask_it->second.data != nullptr) {
+        const auto& mask_src = mask_it->second;
         masks.emplace_back(
             Image{{mask_src.data, meta.mask_shape.width, meta.mask_shape.height, mask_src.pitch,
                    static_cast<Image::Encoding>(mask_src.image_encoding), ImageData::DataType::UINT8, false},
                   meta.timestamp,
-                  static_cast<uint32_t>(i)});
+                  static_cast<uint32_t>(cam_id)});
       }
     }
     if (odom_cfg.odometry_mode == Odometry::OdometryMode::RGBD) {
       for (const auto& [cam_id, depth_src] : depth_sources) {
         if (depth_src.data != nullptr) {
-          const auto& meta = cur_meta[cam_id];
+          const auto& meta = cur_meta.at(cam_id);
+          const auto depth_data_type =
+              depth_src.type == ImageSource::F32 ? ImageData::DataType::FLOAT32 : ImageData::DataType::UINT16;
           depths.emplace_back(Image{{depth_src.data, meta.shape.width, meta.shape.height, depth_src.pitch,
-                                     Image::Encoding::MONO, ImageData::DataType::FLOAT32, false},
+                                     Image::Encoding::MONO, depth_data_type, false},
                                     meta.timestamp,
                                     static_cast<uint32_t>(cam_id)});
         }
@@ -522,10 +532,13 @@ bool trackEdexDataSet(const std::string& data_folder, const Odometry::Config& od
       Pose slam_pose = slam->Track(state);
       printTsPose(out_slam_poses, true, pose_estimate.timestamp_ns, slam_pose);
 
-      if (FLAGS_slam_load_and_localize_on_frame >= 0 && !FLAGS_slam_input_database.empty() && !cur_meta.empty() &&
-          cur_meta[0].frame_number == FLAGS_slam_load_and_localize_on_frame) {
-        if (!RunSlamLoadAndLocalizeOnMatchingFrame(*slam, images)) {
-          return false;
+      if (FLAGS_slam_load_and_localize_on_frame >= 0 && !FLAGS_slam_input_database.empty() && !cur_meta.empty()) {
+        const auto default_meta_it = cur_meta.find(0);
+        const auto& frame_meta = default_meta_it != cur_meta.end() ? default_meta_it->second : cur_meta.begin()->second;
+        if (frame_meta.frame_number == FLAGS_slam_load_and_localize_on_frame) {
+          if (!RunSlamLoadAndLocalizeOnMatchingFrame(*slam, images)) {
+            return false;
+          }
         }
       }
     }

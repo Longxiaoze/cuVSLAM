@@ -207,6 +207,11 @@ const Isometry3T& CameraRigEdex::getExtrinsic(uint32_t index) const {
 }
 
 ErrorCode CameraRigEdex::getFrame(Sources& sources, Metas& metas, Sources& masks_sources, DepthSources& depth_sources) {
+  sources.clear();
+  metas.clear();
+  masks_sources.clear();
+  depth_sources.clear();
+
   if (eventIndex_ >= events_.size()) {
     return ErrorCode::E_Bounds;
   }

@@ -104,7 +104,16 @@ bool ImageContext::build_cpu_image_pyramid(const ImageSource& source, bool blur_
     TraceError("Invalid image source");
     return false;
   }
-  cpu_image_pyramid_u8_.build(source, meta_.shape, blur_filter);
+  if (source.image_encoding == ImageEncoding::RGB8) {
+    ImageMatrix<uint8_t> grayscale = cast_rgb2gs_cpu(source.data, meta_.shape).cast<uint8_t>();
+    ImageSource grayscale_source;
+    grayscale_source.data = grayscale.data();
+    grayscale_source.type = ImageSource::U8;
+    grayscale_source.image_encoding = ImageEncoding::MONO8;
+    cpu_image_pyramid_u8_.build(grayscale_source, meta_.shape, blur_filter);
+  } else {
+    cpu_image_pyramid_u8_.build(source, meta_.shape, blur_filter);
+  }
 
   const int numLevels = cpu_image_pyramid_u8_.num_levels();
 
@@ -114,11 +123,7 @@ bool ImageContext::build_cpu_image_pyramid(const ImageSource& source, bool blur_
 
     const ImageSource& s = pyramid_level_u8.first;
     const ImageShape& shape = pyramid_level_u8.second;
-    if (source.image_encoding == ImageEncoding::MONO8) {
-      cpu_image_pyramid_[k] = s.as<uint8_t>(shape).cast<float>();
-    } else if (source.image_encoding == ImageEncoding::RGB8) {
-      cpu_image_pyramid_[k] = cast_rgb2gs_cpu(s.data, shape);
-    }
+    cpu_image_pyramid_[k] = s.as<uint8_t>(shape).cast<float>();
   }
 
   cpu_image_pyramid_initialized_ = true;
@@ -265,8 +270,9 @@ bool ImageContext::build_gpu_depth_pyramid(const ImageSource& source, cudaStream
     }
   } else {
     if (source.type == ImageSource::Type::F32) {
+      const size_t row_size_bytes = meta_.shape.width * sizeof(float);
       CUDA_CHECK(cudaMemcpy2DAsync((void*)gpu_depth_.ptr(), gpu_depth_.pitch(), (void*)source.data, source.pitch,
-                                   source.pitch, meta_.shape.width, cudaMemcpyDeviceToDevice, s));
+                                   row_size_bytes, meta_.shape.height, cudaMemcpyDeviceToDevice, s));
     } else if (source.type == ImageSource::Type::U16) {
       assert(meta_.pixel_scale_factor != std::nullopt);
 

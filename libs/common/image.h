@@ -18,6 +18,7 @@
 #pragma once
 
 #include <cassert>
+#include <cstdint>
 #include <optional>
 #include <unordered_map>
 #include <vector>
@@ -32,18 +33,18 @@ namespace cuvslam {
 enum ImageEncoding { MONO8, RGB8 };
 
 struct ImageShape {
-  int width;
-  int height;
+  int width = 0;
+  int height = 0;
 };
 
 struct ImageMeta {
   ImageShape shape;
   ImageShape mask_shape;
   // optional image annotation
-  FrameId frame_id;
-  int64_t timestamp;  // ns
-  int frame_number;   // number from image filename
-  int camera_index;   // number of the camera 0, 1, 2, etc.
+  FrameId frame_id = 0;
+  int64_t timestamp = 0;  // ns
+  int frame_number = 0;   // number from image filename
+  int camera_index = 0;   // number of the camera 0, 1, 2, etc.
   std::string filename;
   std::string filename_mask;
 
@@ -55,10 +56,10 @@ struct ImageSource {
   enum Type { U8, F32, U16 };
   enum MemType { Host, Device };
 
-  Type type;
+  Type type = U8;
   MemType memory_type = Host;
   void* data = nullptr;  // somebody else owns this memory
-  int pitch;             // must be valid for GPU images, ignored for CPU images
+  int pitch = 0;         // must be valid for GPU images, ignored for CPU images
   ImageEncoding image_encoding = ImageEncoding::MONO8;
 
   template <class T>
@@ -87,6 +88,10 @@ template <>
 struct ImageSource::TypeAsEnum<uint8_t> {
   static constexpr auto value = ImageSource::U8;
 };
+template <>
+struct ImageSource::TypeAsEnum<uint16_t> {
+  static constexpr auto value = ImageSource::U16;
+};
 
 template <>
 struct ImageSource::EnumAsType<ImageSource::U8> {
@@ -95,6 +100,10 @@ struct ImageSource::EnumAsType<ImageSource::U8> {
 template <>
 struct ImageSource::EnumAsType<ImageSource::F32> {
   using type = float;
+};
+template <>
+struct ImageSource::EnumAsType<ImageSource::U16> {
+  using type = uint16_t;
 };
 
 using Sources = std::unordered_map<CameraId, ImageSource>;

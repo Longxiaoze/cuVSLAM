@@ -17,6 +17,9 @@
 
 #include "camera_rig_edex/blackout_oscillator_filter.h"
 
+#include <cstdint>
+#include <cstring>
+
 #include "common/imu_measurement.h"
 #include "common/log.h"
 
@@ -44,29 +47,34 @@ ErrorCode BlackoutOscillatorFilter::getFrame(Sources& sources, Metas& metas, Sou
   assert(sources.size() == metas.size());
 
   if (status == ErrorCode::S_True && !metas.empty()) {
-    int frame_id = static_cast<int>(metas[0].frame_id);
+    int frame_id = static_cast<int>(metas.begin()->second.frame_id);
     int index = frame_id % period_;
     if (index < duration_ && frame_id >= period_) {
-      // do blackout
-      for (size_t i = 0; i < metas.size(); ++i) {
-        auto& source = sources[i];
-        auto& meta = metas[i];
-
-        void* data = source.data;
-        int size = meta.shape.width * meta.shape.height;
-        if (source.type == ImageSource::U8) {
-          memset(data, 0, size);
+      const auto image_size_bytes = [](const ImageSource& source, const ImageShape& shape) {
+        switch (source.type) {
+          case ImageSource::U8:
+            return static_cast<size_t>(shape.width) * shape.height *
+                   (source.image_encoding == ImageEncoding::RGB8 ? 3 : 1);
+          case ImageSource::F32:
+            return static_cast<size_t>(shape.width) * shape.height * sizeof(float);
+          case ImageSource::U16:
+            return static_cast<size_t>(shape.width) * shape.height * sizeof(uint16_t);
         }
-        if (source.type == ImageSource::F32) {
-          memset(data, 0, size * sizeof(float));
+        return size_t{0};
+      };
+
+      // do blackout
+      for (auto& [cam_id, source] : sources) {
+        const auto meta_it = metas.find(cam_id);
+        if (meta_it != metas.end() && source.data != nullptr) {
+          std::memset(source.data, 0, image_size_bytes(source, meta_it->second.shape));
         }
       }
       for (auto& [cam_id, source] : depth_sources) {
-        const auto& meta = metas.at(cam_id);
-        int size = meta.shape.width * meta.shape.height;
-
-        void* depth_data = source.data;
-        memset(depth_data, 0, size * sizeof(float));
+        const auto meta_it = metas.find(cam_id);
+        if (meta_it != metas.end() && source.data != nullptr) {
+          std::memset(source.data, 0, image_size_bytes(source, meta_it->second.shape));
+        }
       }
       log::Value<LogRoot>("blackout_oscilator", true);
     } else {
