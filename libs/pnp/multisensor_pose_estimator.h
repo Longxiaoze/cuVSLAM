@@ -47,7 +47,7 @@ struct RGBDInfo {
 struct FactorWeights {
   float reprojection = 1.0f;
   float point_to_point = 1e-1f;
-  float point_to_plane = 1e-1f;
+  float point_to_plane = 5e-2f;
   float inertial = 2e-3f;
 
   float robust_reprojection = 1e4f;
