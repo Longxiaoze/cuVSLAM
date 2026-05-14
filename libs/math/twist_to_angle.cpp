@@ -116,18 +116,40 @@ Eigen::Matrix<float, 4, 3> quat_from_twist_jacobian(const Vector3T& twist) {
 // TODO: get rid of it, when IMU code is merged
 Matrix3T translation_from_twist_jacobian(const Vector6T& twist) {
   float phi_norm = twist.head(3).norm();
-  Vector3T a = twist.head(3) / phi_norm;
 
   if (phi_norm < std::numeric_limits<float>::epsilon()) {
     return Matrix3T::Identity();
   } else {
+    Vector3T a = twist.head(3) / phi_norm;
     float s = (float)sin(phi_norm) / phi_norm;
     float c = (1 - (float)cos(phi_norm)) / phi_norm;
     return s * Matrix3T ::Identity() + (1 - s) * a * a.transpose() + c * SkewSymmetric(a);
   }
 }
 
-Matrix6T PoseCovToRollPitchYawCov(const Matrix6T& pose_cov, const Isometry3T& pose) {
+// d(Exp(twist).translation()) / d(twist_rotation), computed by central finite differences.
+// Captures how V(phi)*rho varies with phi at the linearization point.
+Matrix3T translation_from_rotation_twist_jacobian(const Vector6T& twist) {
+  constexpr float kEps = 1e-4f;
+
+  Matrix3T jacobian = Matrix3T::Zero();
+  for (int col = 0; col < 3; ++col) {
+    Vector6T twist_plus = twist;
+    Vector6T twist_minus = twist;
+    twist_plus(col) += kEps;
+    twist_minus(col) -= kEps;
+
+    Isometry3T pose_plus;
+    Isometry3T pose_minus;
+    Exp(pose_plus, twist_plus);
+    Exp(pose_minus, twist_minus);
+
+    jacobian.col(col) = (pose_plus.translation() - pose_minus.translation()) / (2.f * kEps);
+  }
+  return jacobian;
+}
+
+Matrix6T PoseCovToXYZRollPitchYawCov(const Matrix6T& pose_cov, const Isometry3T& pose) {
   QuaternionT quat(pose.linear());
   quat.normalize();
 
@@ -138,9 +160,26 @@ Matrix6T PoseCovToRollPitchYawCov(const Matrix6T& pose_cov, const Isometry3T& po
 
   Matrix6T J = Matrix6T::Zero();
 
-  J.block<3, 3>(0, 0) = roll_pitch_yaw_from_quat_jacobian(quat) * J_qt;
+  constexpr int kTwistRotationOffset = 0;
+  constexpr int kTwistTranslationOffset = 3;
+  constexpr int kPublicTranslationOffset = 0;
+  constexpr int kPublicRotationOffset = 3;
 
-  J.block<3, 3>(3, 3) = translation_from_twist_jacobian(twist);
+  // Input: covariance of `twist` where pose = Exp(twist), in [rx, ry, rz, tx, ty, tz]
+  // order. This matches the form used by the production caller (cuvslam2.cpp), which
+  // inverts the PNP Hessian and treats the result as the covariance of Log(pose).
+  // Output: covariance of [x, y, z, roll, pitch, yaw] of pose.
+  //
+  // For pose = Exp(twist), twist = (phi, rho):
+  //   pose.translation = V(phi) * rho
+  //     -> d(xyz)/d(twist_rot)   = d(V(phi)*rho)/d phi  (depends on both phi and rho)
+  //     -> d(xyz)/d(twist_trans) = V(phi)
+  //   pose.linear = Exp_SO3(phi); q_pose = q(phi)
+  //     -> d(rpy)/d(twist_rot)   = (d rpy / d q)(q_pose) * d q(phi) / d phi
+  //     -> d(rpy)/d(twist_trans) = 0
+  J.block<3, 3>(kPublicTranslationOffset, kTwistRotationOffset) = translation_from_rotation_twist_jacobian(twist);
+  J.block<3, 3>(kPublicTranslationOffset, kTwistTranslationOffset) = translation_from_twist_jacobian(twist);
+  J.block<3, 3>(kPublicRotationOffset, kTwistRotationOffset) = roll_pitch_yaw_from_quat_jacobian(quat) * J_qt;
 
   return J * pose_cov * J.transpose();
 }

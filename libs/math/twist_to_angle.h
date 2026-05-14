@@ -23,9 +23,10 @@
 namespace cuvslam::math {
 
 /**
- * returns a covariance for [roll, pitch, yaw, x, y, z] variable
+ * Converts an SE(3) twist covariance from [rx, ry, rz, tx, ty, tz] order to
+ * public pose covariance order [x, y, z, roll, pitch, yaw].
  */
 
-Matrix6T PoseCovToRollPitchYawCov(const Matrix6T& pose_cov, const Isometry3T& pose);
+Matrix6T PoseCovToXYZRollPitchYawCov(const Matrix6T& pose_cov, const Isometry3T& pose);
 
 }  // namespace cuvslam::math

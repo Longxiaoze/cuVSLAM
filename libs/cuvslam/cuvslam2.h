@@ -282,17 +282,17 @@ struct PoseStamped {
 /**
  * @brief Pose with covariance
  *
- * Pose covariance is defined via matrix exponential:
- * for a random zero-mean perturbation `u` in the tangent space
- * random pose is determined by `mean_pose * exp(u)`.
+ * Pose covariance is exposed over the public pose variables:
+ * (x, y, z, rotation about X axis, rotation about Y axis, rotation about Z axis).
+ * Translation is in meters. Rotation uses a fixed-axis representation in radians.
  */
 struct PoseWithCovariance {
-  Pose pose;                 ///< Pose (transformation between two coordinate frames)
-  PoseCovariance covariance; /**< Row-major representation of the 6x6 covariance matrix.
-                              The orientation parameters use a fixed-axis representation.
-                              In order, the parameters are:
-                              (rotation about X axis, rotation about Y axis, rotation about Z axis, x, y, z)
-                              Rotation in radians, translation in meters.*/
+  Pose pose;                         ///< Pose (transformation between two coordinate frames)
+  PoseCovariance covariance_xyz_rpy; /**< Row-major representation of the 6x6 covariance matrix.
+                                      The orientation parameters use a fixed-axis representation.
+                                      In order, the parameters are:
+                                      (x, y, z, rotation about X axis, rotation about Y axis, rotation about Z axis).
+                                      Translation in meters, rotation in radians.*/
 };
 
 /**

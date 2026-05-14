@@ -22,7 +22,8 @@ set(HEADERS
 set(SOURCES
     ransac_test.cpp
     twist_test.cpp
-        twist_to_quaternion_test.cpp
+    twist_to_quaternion_test.cpp
+    twist_to_angle_test.cpp
     pgo_test.cpp
     )
 

@@ -336,12 +336,13 @@ NB_MODULE(pycuvslam, m) {
   nb::class_<PoseWithCovariance>(m, "PoseWithCovariance", "Pose with covariance matrix")
       .def(nb::init<>())
       .def_ro("pose", &PoseWithCovariance::pose, "Pose (transformation between two coordinate frames)")
-      .def_ro("covariance", &PoseWithCovariance::covariance,
+      .def_ro("covariance_xyz_rpy", &PoseWithCovariance::covariance_xyz_rpy,
               "6x6 covariance matrix for the pose (row-major)\n"
               "The orientation parameters use a fixed-axis representation.\n"
-              "The parameters: (rotation about X axis, rotation about Y axis, rotation about Z axis, x, y, z)")
+              "The parameters: (x, y, z, rotation about X axis, rotation about Y axis, rotation about Z axis)")
       .def("__repr__", [](const PoseWithCovariance& pwc) {
-        return nb::str("cuvslam.PoseWithCovariance(pose={}, covariance={})").format(pwc.pose, pwc.covariance);
+        return nb::str("cuvslam.PoseWithCovariance(pose={}, covariance_xyz_rpy={})")
+            .format(pwc.pose, pwc.covariance_xyz_rpy);
       });
 
   nb::class_<PoseEstimate>(

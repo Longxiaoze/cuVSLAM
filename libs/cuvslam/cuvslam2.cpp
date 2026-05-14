@@ -726,15 +726,15 @@ PoseEstimate Odometry::Track(const ImageSet& images, const ImageSet& masks, cons
 
   // static pose covariance in exponential mapping form in WCS
   const Matrix6T static_pose_covariance_exp = static_info_exp.ldlt().solve(Matrix6T::Identity());
-  // static pose covariance in euler angles in WCS
-  const Matrix6T static_pose_covariance_euler =
-      math::PoseCovToRollPitchYawCov(static_pose_covariance_exp, internal_pose);
+  // static pose covariance in WCS, ordered as [x, y, z, roll, pitch, yaw]
+  const Matrix6T static_pose_covariance_xyz_rpy =
+      math::PoseCovToXYZRollPitchYawCov(static_pose_covariance_exp, internal_pose);
 
   PoseEstimate pose_estimate;
   pose_estimate.timestamp_ns = current_time_ns;
   PoseWithCovariance pose_with_covariance;
   pose_with_covariance.pose = ConvertIsometryToPose(internal_pose);
-  mat<6>(pose_with_covariance.covariance) = static_pose_covariance_euler;
+  mat<6>(pose_with_covariance.covariance_xyz_rpy) = static_pose_covariance_xyz_rpy;
   pose_estimate.world_from_rig = pose_with_covariance;
 
   if (impl->enable_final_landmarks_export) {

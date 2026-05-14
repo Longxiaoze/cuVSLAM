@@ -292,11 +292,13 @@ class TestBindings(unittest.TestCase):
         np.testing.assert_array_equal(pwc.pose.translation, [0, 0, 0])
         np.testing.assert_array_equal(pwc.pose.rotation, [0, 0, 0, 1])
 
-        # pose and covariance are read-only
+        self.assertFalse(hasattr(pwc, "covariance"))
+
+        # pose and covariance_xyz_rpy are read-only
         with self.assertRaises(AttributeError):
             pwc.pose = vslam.Pose()  # type: ignore
         with self.assertRaises(AttributeError):
-            pwc.covariance = [0.0] * 36  # type: ignore
+            pwc.covariance_xyz_rpy = [0.0] * 36  # type: ignore
 
     def test_pose_estimate(self):
         pe = vslam.PoseEstimate()
