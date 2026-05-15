@@ -60,6 +60,17 @@ Run tracking on a video file with one loop:
     --enable_observations_export=true
 ```
 
+### PNG to TGA Cache
+Save uncompressed TGA sidecars while reading an EDEX dataset:
+```bash
+./cuvslam_app.py \
+    --dataset=/path/to/edex_dataset \
+    --odometry_mode=multicamera \
+    --cache_uncompressed
+```
+
+The cache files use the same naming as reporter: `<image>.png.tga`.
+
 ### VIPE Data Refinement
 Run data refinement:
 ```bash

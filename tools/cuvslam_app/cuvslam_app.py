@@ -324,7 +324,8 @@ def track(args: argparse.Namespace,
         dataset = VideoReader(args.dataset, stereo_edex=args.config_path, num_loops=args.num_loops)
     else:
         rgbd_mode = args.odometry_mode == vslam.Tracker.OdometryMode.RGBD
-        dataset = EdexReader(args.dataset, stereo_edex=args.config_path, num_loops=args.num_loops, rgbd_mode=rgbd_mode)
+        dataset = EdexReader(args.dataset, stereo_edex=args.config_path, num_loops=args.num_loops, rgbd_mode=rgbd_mode,
+                             cache_uncompressed=getattr(args, 'cache_uncompressed', False))
 
     tracker_results = TrackerResults()
     if args.sequence_title:
@@ -470,6 +471,8 @@ if __name__ == "__main__":
                         help='Use segments for error calculation', default=False)
     parser.add_argument('--segment_lengths', type=list,
                         help='Segment lengths for error calculation', default=[])
+    parser.add_argument('--cache_uncompressed', '--save_tga_images', dest='cache_uncompressed', action='store_true',
+                        help='Cache PNG images as .png.tga sidecar files while loading EDEX datasets')
 
     # Add tracker configuration arguments
     default_cfg = vslam.Tracker.OdometryConfig()
