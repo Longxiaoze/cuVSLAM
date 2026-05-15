@@ -901,6 +901,9 @@ struct Result {
 
 /**
  * Simultaneous Localization and Mapping (SLAM)
+ *
+ * Thread safety: all methods must be called from a single thread, except LocalizeInMap()
+ * and SaveMap() which may be called concurrently with any other method from another thread.
  */
 class CUVSLAM_API Slam {
 public:

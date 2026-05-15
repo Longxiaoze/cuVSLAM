@@ -18,6 +18,7 @@
 #include "cuvslam/cuvslam2.h"
 
 #include <algorithm>
+#include <atomic>
 #include <cstddef>
 #include <limits>
 #include <mutex>
@@ -910,7 +911,7 @@ public:
   bool use_gpu_ = true;
   bool gt_align_mode_ = false;
   std::unique_ptr<slam::AsyncSlam> async_slam_;
-  uint64_t frame_id_ = 0;
+  std::atomic<uint64_t> frame_id_ = 0;
 
   // views
   bool enable_reading_internals_ = false;
