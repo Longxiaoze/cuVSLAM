@@ -33,6 +33,7 @@ import multiprocessing
 import os
 import sys
 import time
+import warnings
 from concurrent.futures import ProcessPoolExecutor
 from datetime import datetime
 from typing import Dict, List, Sequence, Any, Optional
@@ -40,6 +41,7 @@ import numpy as np
 import cuvslam as vslam
 import conversions as conv
 from edex_reader import EdexReader
+from filters import BlackoutFilter
 from video_reader import VideoReader
 from visualizer import RerunVisualizer, plot_trajectory
 from metrics import calculate_sequence_errors
@@ -176,7 +178,9 @@ class Tracker:
 
         return rgbd_settings
 
-    def process_images(self, frame_id: int, timestamps: List[int], images: List, masks: List, depths: List = None):
+    def process_images(self, frame_id: int, timestamps: Sequence[int],
+                       images: Sequence, masks: Sequence,
+                       depths: Optional[Sequence] = None):
         timestamp = max(timestamps)
         self.start_time = time.perf_counter()
         odom_pose, slam_pose = self.tracker.track(timestamp, images, masks, depths)
@@ -192,6 +196,7 @@ class Tracker:
 
         self.frame_id_from_ts[timestamp] = frame_id
         observations_0 = []
+        landmarks = []
         if self.odom_cfg.enable_observations_export:
             # Get last observations for the main camera
             observations_0 = self.tracker.get_last_observations(0)
@@ -213,7 +218,8 @@ class Tracker:
             if self.odom_cfg.odometry_mode == vslam.Tracker.OdometryMode.Inertial:
                 # Gravity estimation requires collecting sufficient number of keyframes
                 # with motion diversity
-                gravity = self.tracker.get_last_gravity()
+                gravity_raw = self.tracker.get_last_gravity()
+                gravity = np.array(gravity_raw) if gravity_raw is not None else None
             if self.odom_cfg.enable_final_landmarks_export:
                 self.final_landmarks = self.tracker.get_final_landmarks()
             # SLAM data
@@ -251,8 +257,9 @@ class Tracker:
     def set_frame_metadata(self, frame_id: int, metadata: Dict[str, Any]):
         self.frame_metadata[frame_id] = metadata
 
-    def run_tracking_and_measure_performance(self, dataset, tracker_results: TrackerResults):
-        dataset.replay(self)
+    def run_tracking_and_measure_performance(self, dataset, tracker_results: TrackerResults,
+                                              processor=None):
+        dataset.replay(processor if processor is not None else self)
 
         # if slam is enabled, overwrite all slam poses in the end after LCs and PGOs
         if self.slam_cfg:
@@ -317,14 +324,28 @@ def track(args: argparse.Namespace,
           refined_focal: Optional[tuple[float, float]] = None,
           refined_principal: Optional[tuple[float, float]] = None) -> TrackerResults:
 
-    if args.num_loops > 0 and args.odometry_mode == vslam.Tracker.OdometryMode.Inertial:
+    # Normalize and apply backward-compat default: bare --num_loops without
+    # --repeat_type now means Repeat; implicit Shuttle is deprecated.
+    args.repeat_type = (args.repeat_type or 'none').lower()
+    if args.num_loops > 0 and args.repeat_type == 'none':
+        warnings.warn(
+            "--num_loops without --repeat_type now defaults to 'repeat'; "
+            "pass --repeat_type shuttle to keep the old shuttle semantics.",
+            DeprecationWarning, stacklevel=2,
+        )
+        args.repeat_type = 'repeat'
+
+    if args.repeat_type == 'shuttle' and args.odometry_mode == vslam.Tracker.OdometryMode.Inertial:
         raise ValueError("Inertial mode is not supported for shuttle mode")
 
     if args.dataset.endswith('.mp4'):
-        dataset = VideoReader(args.dataset, stereo_edex=args.config_path, num_loops=args.num_loops)
+        dataset = VideoReader(args.dataset, stereo_edex=args.config_path,
+                              num_loops=args.num_loops, repeat_type=args.repeat_type)
     else:
         rgbd_mode = args.odometry_mode == vslam.Tracker.OdometryMode.RGBD
-        dataset = EdexReader(args.dataset, stereo_edex=args.config_path, num_loops=args.num_loops, rgbd_mode=rgbd_mode,
+        dataset = EdexReader(args.dataset, stereo_edex=args.config_path,
+                             num_loops=args.num_loops, rgbd_mode=rgbd_mode,
+                             repeat_type=args.repeat_type,
                              cache_uncompressed=getattr(args, 'cache_uncompressed', False))
 
     tracker_results = TrackerResults()
@@ -355,11 +376,19 @@ def track(args: argparse.Namespace,
     tracker_results.rig = dataset.rig
     if args.sequence_title:
         tracker.stat.sequence_title = args.sequence_title
-    tracker.run_tracking_and_measure_performance(dataset, tracker_results)
+
+    # Compose Processing decorator chain (outermost first). Add future fault-injection
+    # filters here; each implements Processing and forwards to its inner.
+    processor = tracker
+    if args.blackout_period > 0:
+        processor = BlackoutFilter(processor, args.blackout_period, args.blackout_duration)
+
+    tracker.run_tracking_and_measure_performance(dataset, tracker_results, processor=processor)
 
     if dataset.gt_transforms:
         calculate_sequence_errors(tracker.world_from_rig, dataset.gt_transforms, tracker.stat,
-                                  tracker.frame_metadata, args.use_segments, args.segment_lengths, args.num_loops)
+                                  tracker.frame_metadata, args.use_segments, args.segment_lengths,
+                                  args.num_loops, args.repeat_type)
 
     suffix = "_refined" if refined_focal is not None and refined_principal is not None else ""
     plot_trajectory_path = None
@@ -402,6 +431,10 @@ def process_sequence(sequence, args, CUVSLAM_DATASETS, dataset_folder):
     args_copy.sequence_title = sequence['sequence_title']
     args_copy.dataset = os.path.join(CUVSLAM_DATASETS, dataset_folder, sequence['sequence_folder'])
     args_copy.use_slam = 'use_slam' in sequence and sequence['use_slam']
+    if 'repeat_type' in sequence:
+        args_copy.repeat_type = sequence['repeat_type']
+    if 'sequence_num_repeats' in sequence:
+        args_copy.num_loops = sequence['sequence_num_repeats']
 
     tracker_results = track(args_copy)
     return tracker_results.stat
@@ -464,7 +497,15 @@ if __name__ == "__main__":
     parser.add_argument('--visualize_plot', action='store_true',
                         help='Enable plot visualization of tracking results')
     parser.add_argument('--num_loops', type=int,
-                        help='Number of loops for shuttle mode', default=0)
+                        help='Number of repeats (Repeat) or shuttle cycles (Shuttle)', default=0)
+    parser.add_argument('--repeat_type', type=lambda s: s.lower(),
+                        choices=['none', 'repeat', 'shuttle'],
+                        help='Replay mode: none (single pass), repeat (forward N times), '
+                             'shuttle (N forward+back cycles)', default='none')
+    parser.add_argument('--blackout_period', type=int, default=0,
+                        help='Blackout series period in frames (0 disables)')
+    parser.add_argument('--blackout_duration', type=int, default=10,
+                        help='Number of consecutive blacked-out frames per series')
     parser.add_argument('--config_path', type=str,
                         help='Path to the stereo.edex file', default='')
     parser.add_argument('--use_segments', action='store_true',

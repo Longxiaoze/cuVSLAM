@@ -16,7 +16,7 @@
 cuVSLAM Tracker - A wrapper combining Odometry and SLAM functionality.
 """
 
-from typing import Any, Optional, List, Callable, Tuple
+from typing import Any, Optional, List, Sequence, Callable, Tuple
 from .pycuvslam import Odometry, Slam, Rig, PoseEstimate, Pose, ImuMeasurement, Observation, Landmark, PoseStamped
 
 ImageArray = Any  # np.ndarray, torch.Tensor, etc. (CPU or CUDA)
@@ -74,9 +74,9 @@ class Tracker:
 
     def track(self,
               timestamp: int,
-              images: List[ImageArray],
-              masks: Optional[List[ImageArray]] = None,
-              depths: Optional[List[ImageArray]] = None,
+              images: Sequence[ImageArray],
+              masks: Optional[Sequence[ImageArray]] = None,
+              depths: Optional[Sequence[ImageArray]] = None,
               gt_pose: Optional[Pose] = None,
               options: Optional[Odometry.TrackOptions] = None) -> Tuple[PoseEstimate,
                                                                         Optional[Pose]]:
@@ -228,7 +228,7 @@ class Tracker:
                         folder_name: str,
                         timestamp: int,
                         guess_pose: Pose,
-                        images: List[ImageArray],
+                        images: Sequence[ImageArray],
                         settings: Slam.LocalizationSettings,
                         start_cb: Callable[[], None],
                         finish_cb: Callable[[Optional[Pose], str], None]) -> None:

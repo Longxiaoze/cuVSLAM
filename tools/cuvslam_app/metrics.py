@@ -29,7 +29,7 @@ def translation_error(pose_error: np.ndarray) -> float:
     Returns:
         Translation error magnitude
     """
-    return np.linalg.norm(pose_error[:3, 3])
+    return float(np.linalg.norm(pose_error[:3, 3]))
 
 
 def rotation_error(pose_error: np.ndarray) -> float:
@@ -122,29 +122,31 @@ def calc_kabsch_rms_metric(gt_transforms: List[np.ndarray],
 
 def get_frame_mapping(total_frames: int,
                       frame_metadata: Dict,
-                      num_loops: int = 0) -> Dict[int, int]:
-    """Get frame mapping for error calculation.
-    If shuttle mode, get frames from last backward replay.
-    Otherwise, use all frames.
+                      num_loops: int = 0,
+                      repeat_type: str = "none") -> Dict[int, int]:
+    """Map processed frame_id -> GT index for the run.
+
+    Shuttle: compare against the final backward pass (reversed -> forward GT order).
+    Repeat: compare against the final forward pass (already in GT order).
+    None / single pass: identity mapping.
     """
-    if num_loops > 0:
-        # Get frames from last backward replay
+    repeat_type = (repeat_type or "none").lower()
+    if num_loops <= 0 or repeat_type == "none":
+        return {fid: fid for fid in frame_metadata.keys()}
+
+    if repeat_type == "shuttle":
         backward_frames = sorted([
-            frame_id for frame_id, meta in frame_metadata.items()
+            fid for fid, meta in frame_metadata.items()
             if meta['loop'] == num_loops - 1 and not meta['forward']
         ])
+        return {fid: total_frames - 1 - i for i, fid in enumerate(backward_frames)}
 
-        # Remap frame_ids to match forward sequence
-        frame_mapping = {
-            frame_id_pose: total_frames - 1 - i
-            for i, frame_id_pose in enumerate(backward_frames)
-        }
-    else:
-        frame_mapping = {
-            frame_id_pose: frame_id_pose
-            for frame_id_pose in frame_metadata.keys()
-        }
-    return frame_mapping
+    # repeat: last forward pass, frames in forward order
+    forward_frames = sorted([
+        fid for fid, meta in frame_metadata.items()
+        if meta['loop'] == num_loops - 1 and meta['forward']
+    ])
+    return {fid: i for i, fid in enumerate(forward_frames)}
 
 def trajectory_distances(poses: List[np.ndarray]) -> np.ndarray:
     """Calculate cumulative distances along trajectory.
@@ -155,11 +157,11 @@ def trajectory_distances(poses: List[np.ndarray]) -> np.ndarray:
     Returns:
         Array of cumulative distances
     """
-    distances = [0] # First pose has zero distance
+    distances: List[float] = [0.0]  # First pose has zero distance
     for i in range(1, len(poses)):
         # Calculate distance between current and previous pose
         pose_delta = np.linalg.inv(poses[i-1]) @ poses[i]
-        distances.append(distances[-1] + np.linalg.norm(pose_delta[:3, 3]))
+        distances.append(distances[-1] + float(np.linalg.norm(pose_delta[:3, 3])))
     return np.array(distances)
 
 
@@ -191,7 +193,8 @@ def calculate_sequence_errors(
     frame_metadata: Dict[int, Dict],
     use_segments: bool = False,
     segment_lengths: List[int] = [],
-    num_loops: int = 0
+    num_loops: int = 0,
+    repeat_type: str = "none"
 ) -> None:
     """Calculate tracking errors compared to ground truth.
 
@@ -212,7 +215,7 @@ def calculate_sequence_errors(
     rot_error = 0
     n_error_segments = 0
     total_frames = len(gt_transforms)
-    frame_mapping = get_frame_mapping(total_frames, frame_metadata, num_loops)
+    frame_mapping = get_frame_mapping(total_frames, frame_metadata, num_loops, repeat_type)
 
     for frame_id_pose, frame_id_gt in frame_mapping.items():
         if frame_id_gt >= len(gt_transforms):

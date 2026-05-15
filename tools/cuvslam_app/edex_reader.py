@@ -28,9 +28,10 @@ from dataset_reader import DatasetReader, Processing
 
 
 class EdexReader(DatasetReader):
-    def __init__(self, edex_dir: str, stereo_edex: Optional[str] = None, num_loops: int = 0, rgbd_mode: bool = False,
+    def __init__(self, edex_dir: str, stereo_edex: Optional[str] = None, num_loops: int = 0,
+                 rgbd_mode: bool = False, repeat_type: str = "none",
                  cache_uncompressed: bool = False):
-        super().__init__(edex_dir, stereo_edex, num_loops)
+        super().__init__(edex_dir, stereo_edex, num_loops, repeat_type)
         self.rgbd_mode = rgbd_mode
         self.cache_uncompressed = cache_uncompressed
         self.rgbd_settings = None
@@ -109,8 +110,8 @@ class EdexReader(DatasetReader):
                 frame_id = 0
                 for i in range(self.frame_id_start, self.frame_id_end + 1):
                     self.frames[frame_id] = {"cams": [], "cams_max_ts": 0}
+                    ts = self.interval_ns * frame_id
                     for cam_id, image_paths in enumerate(sequence):
-                        ts = self.interval_ns * frame_id
                         self.frames[frame_id]["cams"].append({
                             'id': cam_id,
                             'filename': self.replace_last_digits(image_paths[0], i),
@@ -136,6 +137,11 @@ class EdexReader(DatasetReader):
 
             self.total_frames = len(self.frames)
             self.current_frame = min(self.frames.keys())
+            # Normalize frame_id_start to the first actual frame key so it lives
+            # in the same numbering space as self.frames (used by dataset_reader
+            # for loop rollover and the IMU seam-skip check). The sequence branch
+            # earlier set this to source-file numbering, which can differ.
+            self.frame_id_start = self.current_frame
             self.first_ts = min(self.frames.values(), key=lambda x: x["cams_max_ts"])["cams_max_ts"]
             self.last_ts = max(self.frames.values(), key=lambda x: x["cams_max_ts"])["cams_max_ts"]
             self.max_ts = max(self.last_ts, self.first_ts)
@@ -718,6 +724,7 @@ class EdexReader(DatasetReader):
 
             # Load depth images if in RGBD mode
             if self.rgbd_mode and "depth" in frame_data:
+                assert depths is not None  # guaranteed by rgbd_mode init at the top of replay
                 depth_scale_factor = self.rgbd_settings.depth_scale_factor if self.rgbd_settings else 1.0
                 for depth_data in frame_data["depth"]:
                     depth_id = depth_data['id']
@@ -739,12 +746,29 @@ class EdexReader(DatasetReader):
 
             processor.process_images(frame_id, timestamps, images, masks, depths)
 
-            if frame_data["imu_data"]:
+            # In Repeat mode the IMU samples attached to frame 0 originally lived
+            # between "before-sequence" and frame 0; on loop wrap they would land
+            # immediately after the last frame of the previous loop and inject an
+            # impossible velocity at the seam. Skip them on every loop after the first.
+            seam_skip_imu = (
+                self.repeat_type == "repeat"
+                and self.current_loop > 0
+                and self.current_frame == self.frame_id_start
+            )
+            # Symmetric tail-skip: IMU samples whose original ts exceeds the last
+            # camera frame's ts (max_ts) sit AFTER the loop's last cam frame and
+            # would collide with the next loop's first cam frame on wrap.
+            in_repeat = self.repeat_type == "repeat"
+            if frame_data["imu_data"] and not seam_skip_imu:
                 imu_data = frame_data["imu_data"]
                 for imu_measurement in imu_data:
-                    # IMU data is not supported for shuttle mode, no need to adjust timestamp
-                    # Normalize timestamp to integer nanoseconds (handles float/int and various scales)
-                    timestamp = self.normalize_timestamp_to_ns(imu_measurement['timestamp'])
+                    # Normalize timestamp to integer nanoseconds (handles float/int and various scales).
+                    # adjust_timestamp() offsets by current_loop for Repeat mode; pass-through otherwise.
+                    # Shuttle blocks inertial mode upstream.
+                    original_ts = self.normalize_timestamp_to_ns(imu_measurement['timestamp'])
+                    if in_repeat and original_ts > self.max_ts:
+                        continue
+                    timestamp = self.adjust_timestamp(original_ts)
                     # IMU data is stored in CUVSLAM coordinate system, convert it to Opencv coordinate system
                     linear_accelerations = [
                         imu_measurement['LinearAccelerationX'],

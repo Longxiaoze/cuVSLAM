@@ -52,10 +52,15 @@ class Processing(Protocol):
         ...
 
 class DatasetReader:
-    def __init__(self, dataset_path: str, stereo_edex: Optional[str] = None, num_loops: int = 0):
+    def __init__(self, dataset_path: str, stereo_edex: Optional[str] = None,
+                 num_loops: int = 0, repeat_type: str = "none"):
+        repeat_type = (repeat_type or "none").lower()
+        if repeat_type not in ("none", "repeat", "shuttle"):
+            raise ValueError(f"Invalid repeat_type {repeat_type!r}; expected none|repeat|shuttle")
         self.dataset_path = dataset_path
         self.stereo_edex = stereo_edex
         self.num_loops = num_loops
+        self.repeat_type = repeat_type
         self.rig: Optional[vslam.Rig] = None
         self.total_frames = 0
         self.fps = 0
@@ -76,7 +81,7 @@ class DatasetReader:
                     assert len(transform_12) == 12, "Each line should have 12 float values"
                     transform = np.vstack((np.array(transform_12).reshape(3, 4), np.array([0, 0, 0, 1])))
                     self.gt_transforms.append(transform)
-        elif not os.path.exists(gt_path) and self.num_loops > 0:
+        elif self.repeat_type == "shuttle" and self.num_loops > 0:
             # consider first forward run in shuttle mode as ground truth
             self.gt_from_shuttle = True
 
@@ -174,12 +179,20 @@ class DatasetReader:
 
     def check_end_of_sequence(self) -> bool:
         """Check if we should continue playing or switch direction."""
-        # For single playback (num_loops == 0), just check forward direction
-        if self.num_loops == 0:
+        # Single playback
+        if self.repeat_type == "none" or self.num_loops == 0:
             if self.current_frame >= self.total_frames:
                 return False
             return True
-        # Check if we've reached either end of the video
+
+        if self.repeat_type == "repeat":
+            # Forward-only: rewind to start without flipping
+            if self.current_frame >= self.total_frames:
+                self.current_loop += 1
+                self.current_frame = self.frame_id_start
+            return self.current_loop < self.num_loops
+
+        # Shuttle: forward + backward per loop
         reached_end = False
         if self.replay_forward and self.current_frame >= self.total_frames:
             reached_end = True
@@ -198,16 +211,20 @@ class DatasetReader:
         return self.current_loop < self.num_loops
 
     def adjust_timestamp(self, timestamp: int) -> int:
-        """Adjust timestamp for shuttle mode."""
+        """Adjust timestamp for shuttle/repeat playback so timestamps stay monotonic."""
         # Time shift by 1 frame
         delta = int(1e9 / self.fps)
 
-        # Adjust timestamp based on direction and current loop
+        if self.repeat_type == "none" or self.num_loops == 0:
+            return timestamp
+
+        if self.repeat_type == "repeat":
+            return timestamp + self.current_loop * (self.sequence_duration + delta)
+
+        # Shuttle: alternate direction, two passes per loop
         if self.replay_forward:
             adjusted_ts = timestamp
         else:
             adjusted_ts = 2 * self.max_ts + delta - timestamp
-
-        # Add offset for completed loops
         adjusted_ts += 2 * self.current_loop * (self.sequence_duration + delta)
         return adjusted_ts

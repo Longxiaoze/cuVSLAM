@@ -15,7 +15,7 @@
 import numpy as np
 import rerun as rr
 import rerun.blueprint as rrb
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Sequence
 from numpy.typing import ArrayLike
 from scipy.spatial.transform import Rotation
 
@@ -261,7 +261,7 @@ class RerunVisualizer:
                 # rr.Points3D(node_positions),
             )
 
-    def visualize_frame(self, frame_id: int, images: List[np.ndarray],
+    def visualize_frame(self, frame_id: int, images: Sequence[np.ndarray],
                         odom_pose: vslam.Pose, slam_pose: Optional[vslam.Pose],
                         observations_0: List[vslam.Observation],
                         last_landmarks: List[vslam.Landmark],
