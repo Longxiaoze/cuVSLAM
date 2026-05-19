@@ -16,8 +16,13 @@ import os
 import json
 import base64
 import subprocess
+from collections import defaultdict
 from datetime import datetime
+from typing import List, Optional, Tuple
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 from jinja2 import Environment, FileSystemLoader
 
 
@@ -127,6 +132,69 @@ def calc_summary(title, stats):
     }
 
 
+def _aggregate_by_length(stats) -> Tuple[List[float], List[float], List[float]]:
+    """Bin per-segment error points from all sequences by path length.
+
+    Returns (lengths, mean_t_pct, mean_r_deg_per_m) sorted by length.
+    Bins with fewer than 3 samples are skipped (matches reporter's >2.5 cutoff).
+    """
+    t_by_len = defaultdict(list)
+    r_by_len = defaultdict(list)
+    for s in stats:
+        for p in getattr(s, 'seg_err_points', []) or []:
+            t_by_len[p['length']].append(p['t_pct'])
+            r_by_len[p['length']].append(p['r_deg_per_m'])
+
+    lengths, mean_t, mean_r = [], [], []
+    for length in sorted(t_by_len):
+        if len(t_by_len[length]) < 3 or not r_by_len[length]:
+            continue
+        lengths.append(length)
+        mean_t.append(sum(t_by_len[length]) / len(t_by_len[length]))
+        mean_r.append(sum(r_by_len[length]) / len(r_by_len[length]))
+    return lengths, mean_t, mean_r
+
+
+def _save_avg_error_plots(stats, plots_dir: str) -> Tuple[Optional[str], Optional[str]]:
+    """Render cross-sequence avg translation/rotation error vs path length.
+
+    Returns (avg_tl_path, avg_rl_path), or (None, None) if no data.
+    """
+    lengths, mean_t, mean_r = _aggregate_by_length(stats)
+    if not lengths:
+        return None, None
+
+    os.makedirs(plots_dir, exist_ok=True)
+    avg_tl_path = os.path.join(plots_dir, "avg_tl.png")
+    avg_rl_path = os.path.join(plots_dir, "avg_rl.png")
+
+    fig, ax = plt.subplots(figsize=(14, 5))
+    ax.plot(lengths, mean_t, marker='s', color='#0000FF', label='Translation Error')
+    ax.set_xlabel('Path Length [m]')
+    ax.set_ylabel('Translation Error [%]')
+    ax.set_title('Average translation error vs path length')
+    ax.set_ylim(bottom=0)
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(avg_tl_path)
+    plt.close(fig)
+
+    fig, ax = plt.subplots(figsize=(14, 5))
+    ax.plot(lengths, mean_r, marker='s', color='#0000FF', label='Rotation Error')
+    ax.set_xlabel('Path Length [m]')
+    ax.set_ylabel('Rotation Error [deg/m]')
+    ax.set_title('Average rotation error vs path length')
+    ax.set_ylim(bottom=0)
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    fig.tight_layout()
+    fig.savefig(avg_rl_path)
+    plt.close(fig)
+
+    return avg_tl_path, avg_rl_path
+
+
 def generate_report(test_folder, comments, stats, generate_pdf=False, config_name=None):
     script_dir = os.path.dirname(os.path.abspath(__file__))
 
@@ -192,6 +260,13 @@ def generate_report(test_folder, comments, stats, generate_pdf=False, config_nam
         }
         stats_for_html.append(stat_dict)
 
+    # Render cross-sequence error-vs-path-length plots; embedded under the
+    # "Average" header above the per-sequence sections.
+    plots_dir = os.path.join(test_folder, "plots")
+    avg_tl_abs, avg_rl_abs = _save_avg_error_plots(stats, plots_dir)
+    avg_tl_rel = os.path.relpath(avg_tl_abs, test_folder) if avg_tl_abs else ""
+    avg_rl_rel = os.path.relpath(avg_rl_abs, test_folder) if avg_rl_abs else ""
+
     template_dir = os.path.join(os.path.dirname(__file__), 'report_templates')
     env = Environment(loader=FileSystemLoader(template_dir), autoescape=True)
 
@@ -206,7 +281,9 @@ def generate_report(test_folder, comments, stats, generate_pdf=False, config_nam
         commit_ts=commit_ts,
         comments=comments,
         stats=stats_for_html,
-        total=total
+        total=total,
+        avg_tl_path=avg_tl_rel,
+        avg_rl_path=avg_rl_rel,
     )
 
     html_file_name = os.path.join(test_folder, f"{report_basename}.html")
@@ -244,7 +321,9 @@ def generate_report(test_folder, comments, stats, generate_pdf=False, config_nam
                 commit_ts=commit_ts,
                 comments=comments,
                 stats=stats_for_pdf,
-                total=total
+                total=total,
+                avg_tl_base64=image_to_base64(avg_tl_abs) if avg_tl_abs else "",
+                avg_rl_base64=image_to_base64(avg_rl_abs) if avg_rl_abs else "",
             )
 
             pdf_file_name = os.path.join(test_folder, f"{report_basename}.pdf")

@@ -99,6 +99,12 @@
     </tr>
     </table>
 
+{% if avg_tl_path or avg_rl_path %}
+    <h2>Average</h2>
+    {% if avg_tl_path %}<img src="{{ avg_tl_path }}">{% endif %}
+    {% if avg_rl_path %}<img src="{{ avg_rl_path }}">{% endif %}
+{% endif %}
+
 {% for s in stats %}
     <div class="keeptogether">
         <h2>Sequence {{ s.sequence_title }}</h2>

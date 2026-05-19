@@ -230,6 +230,9 @@ def calculate_sequence_errors(
     kabsch_rms_metric = calc_kabsch_rms_metric(gt_transforms_filtered, pose_transforms)  # m
     total_frames = len(gt_transforms_filtered)
 
+    # Ensure stat owns a fresh list so non-segment runs don't share the Stat class default.
+    stat.seg_err_points = []
+
     if not use_segments:
         # Calculate ATE and ARE errors for entire sequence
         for i in range(total_frames):
@@ -260,8 +263,14 @@ def calculate_sequence_errors(
         # pre-compute distances (from ground truth as reference)
         dist = trajectory_distances(gt_transforms_filtered)
 
+        # Per-(start_frame, segment_length) error points, retained for the
+        # cross-sequence error-vs-path-length aggregate plot in the report.
+        seg_err_points: List[Dict[str, float]] = []
+
         for first_frame in range(0, total_frames, step_size):
             for length in segment_lengths:
+                if length <= 0:
+                    continue  # guard against bad cfg entries; divide-by-zero below
                 last_frame = last_frame_from_segment_length(dist, first_frame, length)
 
                 # continue, if sequence is not long enough
@@ -273,9 +282,19 @@ def calculate_sequence_errors(
                 pose_delta_result = np.linalg.inv(pose_transforms[first_frame]) @ pose_transforms[last_frame]
                 pose_error = np.linalg.inv(pose_delta_result) @ pose_delta_gt
 
-                trans_error += translation_error(pose_error) / length
-                rot_error += rotation_error(pose_error) / length
+                t_rel = translation_error(pose_error) / length  # dimensionless
+                r_per_m = rotation_error(pose_error) / length  # deg/m
+
+                trans_error += t_rel
+                rot_error += r_per_m
                 n_error_segments += 1
+                seg_err_points.append({
+                    'length': float(length),
+                    't_pct': t_rel * 100.0,
+                    'r_deg_per_m': r_per_m,
+                })
+
+        stat.seg_err_points = seg_err_points
 
         if n_error_segments == 0:
             print("Warning: Cannot calculate errors - no valid segments")

@@ -35,6 +35,7 @@ import sys
 import time
 import warnings
 from concurrent.futures import ProcessPoolExecutor
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Sequence, Any, Optional
 import numpy as np
@@ -48,6 +49,7 @@ from metrics import calculate_sequence_errors
 from generate_report import generate_report, get_fps, save_stats_to_json
 
 
+@dataclass
 class Stat:
     sequence_title: str = ""
     n_frames: int = 0
@@ -60,6 +62,9 @@ class Stat:
     gt_simple_error: float = 0
     num_tracking_losts: int = -1
     odometry_mode: str = ""
+    # per-instance list of dicts {length, t_pct, r_deg_per_m}, populated by
+    # metrics.calculate_sequence_errors in the segment branch.
+    seg_err_points: list = field(default_factory=list)
 
 
 class TrackerResults:

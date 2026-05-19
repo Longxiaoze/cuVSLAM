@@ -124,6 +124,12 @@
     </tr>
     </table>
 
+{% if avg_tl_base64 or avg_rl_base64 %}
+    <h2>Average</h2>
+    {% if avg_tl_base64 %}<img src="{{ avg_tl_base64 }}">{% endif %}
+    {% if avg_rl_base64 %}<img src="{{ avg_rl_base64 }}">{% endif %}
+{% endif %}
+
 {% for s in stats %}
     <div class="keeptogether">
         <h2>Sequence {{ s.sequence_title }}</h2>
