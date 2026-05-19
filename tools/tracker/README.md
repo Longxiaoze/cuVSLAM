@@ -1,3 +1,5 @@
+Obsolete. Read [tools/ROADMAP.md](../ROADMAP.md).
+
 cuVSLAM tracker
 ==============
 
