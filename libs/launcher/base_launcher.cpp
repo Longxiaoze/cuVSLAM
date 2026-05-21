@@ -360,7 +360,7 @@ ErrorCode BaseLauncher::launch() {
       assert(abs_world_from_rig.matrix().allFinite());
 
       if (async_slam_) {
-        async_slam_->TrackResult(frameId, timestamp_ns, stat, slam_images, delta, nullptr);
+        async_slam_->TrackResult(frameId, timestamp_ns, stat, slam_images, delta);
         abs_world_from_rig = async_slam_->GetSlamPose();
       }
 

@@ -977,7 +977,7 @@ public:
         slam_images[cam_id] = images.at(cam_id);
       }
     }
-    async_slam_->TrackResult(frame_id, timestamp_ns, stat, slam_images, delta, nullptr);
+    async_slam_->TrackResult(frame_id, timestamp_ns, stat, slam_images, delta);
     // for synchronous execution:
     async_slam_->ProcessInputSynchronously();
   }
@@ -990,7 +990,7 @@ Slam::Slam(Slam&& other) noexcept = default;
 
 Slam::~Slam() = default;
 
-Pose Slam::Track(const Odometry::State& state, const Pose* gt_pose) {
+void Slam::Track(const Odometry::State& state, const Pose* gt_pose) {
   // Convert from public API types to internal types
   Isometry3T internal_delta = ConvertPoseToIsometry(state.delta);
   if (impl->gt_align_mode_) {
@@ -1035,11 +1035,11 @@ Pose Slam::Track(const Odometry::State& state, const Pose* gt_pose) {
   impl->Track(state.frame_id, state.timestamp_ns, stat, internal_delta, slam_images);
   impl->frame_id_ = state.frame_id;
 
-  const Isometry3T slam_pose = impl->async_slam_->GetSlamPose();
   // copy odometry landmarks to observations view
   auto view_manager = impl->landmarks_views_[ToUnderlying(DataLayer::Landmarks)];
   auto landmarks_view = view_manager ? view_manager->acquire_earliest() : nullptr;
   if (landmarks_view) {
+    const Isometry3T slam_pose = impl->async_slam_->GetSlamPose();
     for (const auto& [id, v] : stat.tracks3d) {
       if (landmarks_view->landmarks.size() >= landmarks_view->landmarks.capacity()) {
         break;
@@ -1048,8 +1048,9 @@ Pose Slam::Track(const Odometry::State& state, const Pose* gt_pose) {
     }
     landmarks_view->timestamp_ns = state.timestamp_ns;
   }
-  return ConvertIsometryToPose(slam_pose);
 }
+
+Pose Slam::GetPose() const { return ConvertIsometryToPose(impl->async_slam_->GetSlamPose()); }
 
 void Slam::GetAllSlamPoses(std::vector<PoseStamped>& poses, uint32_t max_poses_count) const {
   std::map<uint64_t, storage::Isometry3<float>> frames;

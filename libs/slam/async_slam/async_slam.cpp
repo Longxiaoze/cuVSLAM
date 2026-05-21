@@ -112,7 +112,7 @@ AsyncSlam::~AsyncSlam() {
 }
 
 void AsyncSlam::TrackResult(FrameId frameId, int64_t timestamp_ns, const odom::IVisualOdometry::VOFrameStat& stat,
-                            const sof::Images& images, const Isometry3T& delta, Isometry3T* slam_pose) {
+                            const sof::Images& images, const Isometry3T& delta) {
   TRACE_EVENT ev = profiler_domain_.trace_event("AsyncSlam::TrackResult()", profiler_color_);
 
   assert(track_data_.from_keyframe.matrix().allFinite());
@@ -198,9 +198,6 @@ void AsyncSlam::TrackResult(FrameId frameId, int64_t timestamp_ns, const odom::I
     trajectory_[frameId] = track_data_;
   }
 
-  if (slam_pose) {
-    *slam_pose = GetSlamPose();
-  }
 #ifdef USE_RERUN
   {
     const Isometry3T current_pose = GetSlamPose();

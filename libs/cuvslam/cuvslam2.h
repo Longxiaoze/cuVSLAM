@@ -1055,9 +1055,17 @@ public:
    * should be nullptr.
    * @see `Odometry::Track`
    * @throws std::invalid_argument if `gt_pose` is passed incorrectly
-   * @return On success `Pose` contains rig pose estimated by SLAM
    */
-  Pose Track(const Odometry::State& state, const Pose* gt_pose = nullptr);
+  void Track(const Odometry::State& state, const Pose* gt_pose = nullptr);
+
+  /**
+   * Get the current SLAM rig pose in the world frame.
+   *
+   * Returns the most recent pose computed by SLAM. Before the first keyframe is processed the pose
+   * is the identity transform.
+   * @return Current rig pose in world frame
+   */
+  Pose GetPose() const;
 
   /**
    * Get all SLAM poses for each frame.

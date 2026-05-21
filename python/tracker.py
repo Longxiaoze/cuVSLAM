@@ -124,7 +124,8 @@ class Tracker:
         slam_pose = None
         if self.slam and pose_estimate.world_from_rig:
             state = self.odom.get_state()
-            slam_pose = self.slam.track(state, gt_pose)
+            self.slam.track(state, gt_pose)
+            slam_pose = self.slam.get_pose()
 
         return pose_estimate, slam_pose
 

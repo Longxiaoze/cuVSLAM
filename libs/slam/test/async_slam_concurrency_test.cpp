@@ -117,8 +117,8 @@ TEST(AsyncSlam, TrackResultCanRunWhileLocalizeInMapIsInFlight) {
   cuvslam::Isometry3T delta = cuvslam::Isometry3T::Identity();
   delta.translation().x() = 1.f;
 
-  cuvslam::Isometry3T slam_pose;
-  slam.TrackResult(1, 1'000, stat, MakeImages(1, 1'000), delta, &slam_pose);
+  slam.TrackResult(1, 1'000, stat, MakeImages(1, 1'000), delta);
+  const cuvslam::Isometry3T slam_pose = slam.GetSlamPose();
   EXPECT_TRUE(slam_pose.matrix().allFinite());
 
   {

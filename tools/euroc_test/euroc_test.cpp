@@ -446,7 +446,8 @@ int main(int argc, char** argv) {
         if (slam) {
           cuvslam::Odometry::State state;
           tracker.GetState(state);
-          out_pose = slam->Track(state);
+          slam->Track(state);
+          out_pose = slam->GetPose();
         }
 
         PrintPoseTum(out, frame_ts, out_pose);

@@ -278,7 +278,8 @@ bool TrackEdexApi2(const TestingSettings& settings, const cuvslam::Odometry::Con
       if (settings.enable_slam) {
         Odometry::State state;
         tracker.GetState(state);
-        auto slam_pose = slam.Track(state);
+        slam.Track(state);
+        const auto slam_pose = slam.GetPose();
         PrintPose(out_slam_poses, true, pose_estimate.timestamp_ns, slam_pose, settings.print_nan_on_failure);
       }
 

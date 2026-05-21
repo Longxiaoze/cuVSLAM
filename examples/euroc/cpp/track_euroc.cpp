@@ -609,7 +609,7 @@ int main(int argc, char **argv) {
 
         cuvslam::Odometry::State state;
         odom.GetState(state);
-        [[maybe_unused]] auto slam_pose = slam.Track(state);
+        slam.Track(state);
 
         std::cout << std::setw(5) << frame << " | " << std::setw(14) << current_timestamp << " | " << std::fixed
                   << std::setprecision(3) << "[" << std::setw(7) << t[0] << ", " << std::setw(7) << t[1] << ", "

@@ -939,9 +939,13 @@ NB_MODULE(pycuvslam, m) {
            "Parameters:\n"
            "    state: Odometry state containing all tracking data\n"
            "    gt_pose: Optional ground truth pose. Should be provided if `gt_align_mode` is enabled, otherwise "
-           "should be None.\n"
+           "should be None.")
+      .def("get_pose", &Slam::GetPose,
+           "Get the current SLAM rig pose in the world frame.\n\n"
+           "Returns the most recent pose computed by SLAM. Before the first keyframe is processed the pose is the\n"
+           "identity transform.\n"
            "Returns:\n"
-           "    On success returns rig pose estimated by SLAM")
+           "    Current rig pose in world frame")
       .def(
           "get_all_slam_poses",
           [](const Slam& self, uint32_t max_poses_count) -> std::vector<PoseStamped> {

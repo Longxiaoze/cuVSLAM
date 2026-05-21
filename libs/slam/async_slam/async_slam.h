@@ -79,7 +79,7 @@ public:
   void Stop();
 
   void TrackResult(FrameId frameId, int64_t timestamp_ns, const odom::IVisualOdometry::VOFrameStat& stat,
-                   const sof::Images& images, const Isometry3T& delta, Isometry3T* slam_pose);
+                   const sof::Images& images, const Isometry3T& delta);
 
   void LocalizeInMap(const std::string_view& folder_name, int64_t timestamp_ns, const Isometry3T& guess_pose,
                      const sof::Images& images, const Slam::LocalizationSettings& settings,

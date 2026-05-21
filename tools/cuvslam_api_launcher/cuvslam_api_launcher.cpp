@@ -529,7 +529,8 @@ bool trackEdexDataSet(const std::string& data_folder, const Odometry::Config& od
     if (slam) {
       Odometry::State state;
       odom->GetState(state);
-      Pose slam_pose = slam->Track(state);
+      slam->Track(state);
+      const Pose slam_pose = slam->GetPose();
       printTsPose(out_slam_poses, true, pose_estimate.timestamp_ns, slam_pose);
 
       if (FLAGS_slam_load_and_localize_on_frame >= 0 && !FLAGS_slam_input_database.empty() && !cur_meta.empty()) {
