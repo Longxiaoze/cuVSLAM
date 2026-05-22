@@ -216,8 +216,8 @@ def load_slam_config_from_file(filepath: str) -> Slam.Config:
     return config
 
 
-def _apply_track_options_section(options: Odometry.TrackOptions, section: dict) -> None:
-    """Apply a key/value dict (from the YAML 'track_options' section) to a Odometry.TrackOptions."""
+def _apply_internals_section(options: Odometry.Internals, section: dict) -> None:
+    """Apply a key/value dict (from the YAML 'internals' section) to a Odometry.Internals."""
     for key, value in section.items():
         if key == "num_desired_tracks":
             options.num_desired_tracks = int(value)
@@ -274,14 +274,14 @@ def _apply_track_options_section(options: Odometry.TrackOptions, section: dict) 
         elif key == "inertial_stereo_pnp_cost_thresh":
             options.inertial_stereo_pnp_cost_thresh = float(value)
         else:
-            warnings.warn(f"try_load_track_options_from_file: unknown key {key!r} (ignored)", stacklevel=2)
+            warnings.warn(f"try_load_internals_from_file: unknown key {key!r} (ignored)", stacklevel=2)
 
 
-def try_load_track_options_from_file(filepath: str) -> Optional[Odometry.TrackOptions]:
-    """Load a TrackOptions from the ``track_options:`` section of a YAML file.
+def try_load_internals_from_file(filepath: str) -> Optional[Odometry.Internals]:
+    """Load a Internals from the ``internals:`` section of a YAML file.
 
     Returns:
-        Configured ``Odometry.TrackOptions``, or ``None`` if the file has no ``track_options`` section.
+        Configured ``Odometry.Internals``, or ``None`` if the file has no ``internals`` section.
     Raises:
         RuntimeError: If the file cannot be opened or parsed.
     """
@@ -293,21 +293,24 @@ def try_load_track_options_from_file(filepath: str) -> Optional[Odometry.TrackOp
     except yaml.YAMLError as e:
         raise RuntimeError(f"failed to parse YAML file '{filepath}': {e}") from e
 
-    if not isinstance(root, dict) or "track_options" not in root:
+    if not isinstance(root, dict):
+        return None
+    section = root.get("internals")
+    if section is None:
         return None
 
-    options = Odometry.TrackOptions()
-    _apply_track_options_section(options, root["track_options"])
+    options = Odometry.Internals()
+    _apply_internals_section(options, section)
     return options
 
 
-def load_track_options_from_file(filepath: str) -> Odometry.TrackOptions:
-    """Load a TrackOptions from the ``track_options:`` section of a YAML file.
+def load_internals_from_file(filepath: str) -> Odometry.Internals:
+    """Load a Internals from the ``internals:`` section of a YAML file.
 
     Raises:
-        RuntimeError: If the file cannot be opened, parsed, or has no ``track_options`` section.
+        RuntimeError: If the file cannot be opened, parsed, or has no ``internals`` section.
     """
-    options = try_load_track_options_from_file(filepath)
+    options = try_load_internals_from_file(filepath)
     if options is None:
-        raise RuntimeError(f"No 'track_options' section found in config file: {filepath}")
+        raise RuntimeError(f"No 'internals' section found in config file: {filepath}")
     return options

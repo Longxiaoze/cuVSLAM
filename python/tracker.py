@@ -36,7 +36,7 @@ class Tracker:
     OdometryConfig = Odometry.Config
     OdometryRGBDSettings = Odometry.RGBDSettings
     OdometryMultisensorSettings = Odometry.MultisensorSettings
-    TrackOptions = Odometry.TrackOptions
+    Internals = Odometry.Internals
 
     SlamConfig = Slam.Config
     SlamMetrics = Slam.Metrics
@@ -78,8 +78,8 @@ class Tracker:
               masks: Optional[Sequence[ImageArray]] = None,
               depths: Optional[Sequence[ImageArray]] = None,
               gt_pose: Optional[Pose] = None,
-              options: Optional[Odometry.TrackOptions] = None) -> Tuple[PoseEstimate,
-                                                                        Optional[Pose]]:
+              internals: Optional[Odometry.Internals] = None) -> Tuple[PoseEstimate,
+                                                                         Optional[Pose]]:
         """
         Track a rig pose using current image frame.
 
@@ -110,7 +110,7 @@ class Tracker:
             masks: Optional list of numpy arrays or tensors containing masks for the images
             depths: Optional list of numpy arrays or tensors containing depth images
             gt_pose: Optional ground truth pose. Should be provided if `gt_align_mode` is enabled, otherwise should be None.
-            options: Optional per-frame options that override default settings for this call only.
+            internals: Optional internal per-frame solver parameters (see cuvslam2_internal.h).
 
         Returns:
             PoseEstimate: The computed pose estimate from Odometry. On failure `world_from_rig` will be `None`.
@@ -119,7 +119,7 @@ class Tracker:
         Raises:
             ValueError: If data checks fail (e.g. timestamps are out of order, images sizes are inconsistent, etc.).
         """
-        pose_estimate = self.odom.track(timestamp, images, masks, depths, options)
+        pose_estimate = self.odom.track(timestamp, images, masks, depths, internals)
 
         slam_pose = None
         if self.slam and pose_estimate.world_from_rig:

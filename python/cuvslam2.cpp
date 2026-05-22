@@ -27,6 +27,7 @@
 #include "nanobind/stl/vector.h"
 
 #include "cuvslam/cuvslam2.h"
+#include "cuvslam/cuvslam2_internal.h"
 
 #define THROW_INVALID_ARG_IF(condition, message) \
   do {                                           \
@@ -522,87 +523,91 @@ NB_MODULE(pycuvslam, m) {
                     s.gravity.has_value() ? s.gravity.value() : Odometry::Gravity{});
       });
 
-  // TrackOptions binding - per-frame parameter overrides (stateless)
-  nb::class_<Odometry::TrackOptions>(
-      odom_cls, "TrackOptions",
+  // Internals binding - per-frame parameter overrides (stateless)
+  nb::class_<cuvslam::internal::Internals>(
+      odom_cls, "Internals",
       "Per-frame tracking options (stateless).\n\n"
       "These options apply only to the current track() call and do not affect subsequent frames.\n"
-      "Instantiate with TrackOptions() and override only the fields you need.")
+      "Instantiate with Internals() and override only the fields you need.")
       .def(nb::init<>())
       // Feature Selection Settings
-      .def_rw("num_desired_tracks", &Odometry::TrackOptions::num_desired_tracks,
+      .def_rw("num_desired_tracks", &cuvslam::internal::Internals::num_desired_tracks,
               "Number of desired feature tracks for this frame")
-      .def_rw("border_top", &Odometry::TrackOptions::border_top, "Top border to ignore in pixels")
-      .def_rw("border_bottom", &Odometry::TrackOptions::border_bottom, "Bottom border to ignore in pixels")
-      .def_rw("border_left", &Odometry::TrackOptions::border_left, "Left border to ignore in pixels")
-      .def_rw("border_right", &Odometry::TrackOptions::border_right, "Right border to ignore in pixels")
-      .def_rw("box3_prefilter", &Odometry::TrackOptions::box3_prefilter, "Enable box filter preprocessing")
-      .def_rw("ransac_filter", &Odometry::TrackOptions::ransac_filter, "Enable RANSAC filtering")
+      .def_rw("border_top", &cuvslam::internal::Internals::border_top, "Top border to ignore in pixels")
+      .def_rw("border_bottom", &cuvslam::internal::Internals::border_bottom, "Bottom border to ignore in pixels")
+      .def_rw("border_left", &cuvslam::internal::Internals::border_left, "Left border to ignore in pixels")
+      .def_rw("border_right", &cuvslam::internal::Internals::border_right, "Right border to ignore in pixels")
+      .def_rw("box3_prefilter", &cuvslam::internal::Internals::box3_prefilter, "Enable box filter preprocessing")
+      .def_rw("ransac_filter", &cuvslam::internal::Internals::ransac_filter, "Enable RANSAC filtering")
       // Keyframe Settings
-      .def_rw("kf_survivor_from_last", &Odometry::TrackOptions::kf_survivor_from_last,
+      .def_rw("kf_survivor_from_last", &cuvslam::internal::Internals::kf_survivor_from_last,
               "Keyframe selection threshold: survivor tracks percentage (0-100)")
-      .def_rw("kf_max_timedelta_between_kfs_s", &Odometry::TrackOptions::kf_max_timedelta_between_kfs_s,
+      .def_rw("kf_max_timedelta_between_kfs_s", &cuvslam::internal::Internals::kf_max_timedelta_between_kfs_s,
               "Maximum time delta between consecutive keyframes (seconds)")
       // PNP Settings
-      .def_rw("vo_pnp_lambda", &Odometry::TrackOptions::vo_pnp_lambda, "Visual PNP Levenberg-Marquardt damping factor")
-      .def_rw("vo_pnp_huber", &Odometry::TrackOptions::vo_pnp_huber, "Visual PNP Huber robustifier scale")
-      .def_rw("vo_pnp_max_iteration", &Odometry::TrackOptions::vo_pnp_max_iteration,
+      .def_rw("vo_pnp_lambda", &cuvslam::internal::Internals::vo_pnp_lambda,
+              "Visual PNP Levenberg-Marquardt damping factor")
+      .def_rw("vo_pnp_huber", &cuvslam::internal::Internals::vo_pnp_huber, "Visual PNP Huber robustifier scale")
+      .def_rw("vo_pnp_max_iteration", &cuvslam::internal::Internals::vo_pnp_max_iteration,
               "Maximum visual PNP solver iterations")
-      .def_rw("vo_pnp_recalculate_cov", &Odometry::TrackOptions::vo_pnp_recalculate_cov,
+      .def_rw("vo_pnp_recalculate_cov", &cuvslam::internal::Internals::vo_pnp_recalculate_cov,
               "Whether visual PNP recomputes covariance after a successful solve")
-      .def_rw("vo_pnp_filter_new_observations", &Odometry::TrackOptions::vo_pnp_filter_new_observations,
+      .def_rw("vo_pnp_filter_new_observations", &cuvslam::internal::Internals::vo_pnp_filter_new_observations,
               "Whether visual PNP filters observations per camera")
-      .def_rw("vo_pnp_max_obs_per_camera", &Odometry::TrackOptions::vo_pnp_max_obs_per_camera,
+      .def_rw("vo_pnp_max_obs_per_camera", &cuvslam::internal::Internals::vo_pnp_max_obs_per_camera,
               "Maximum visual PNP observations per camera")
-      .def_rw("vo_pnp_point_z_thresh", &Odometry::TrackOptions::vo_pnp_point_z_thresh,
+      .def_rw("vo_pnp_point_z_thresh", &cuvslam::internal::Internals::vo_pnp_point_z_thresh,
               "Minimum visual PNP landmark z-depth")
-      .def_rw("vo_pnp_min_observations", &Odometry::TrackOptions::vo_pnp_min_observations,
+      .def_rw("vo_pnp_min_observations", &cuvslam::internal::Internals::vo_pnp_min_observations,
               "Minimum observations required for visual PNP")
-      .def_rw("vo_pnp_cost_thresh", &Odometry::TrackOptions::vo_pnp_cost_thresh, "Visual PNP convergence threshold")
-      .def_rw("inertial_stereo_pnp_lambda", &Odometry::TrackOptions::inertial_stereo_pnp_lambda,
+      .def_rw("vo_pnp_cost_thresh", &cuvslam::internal::Internals::vo_pnp_cost_thresh,
+              "Visual PNP convergence threshold")
+      .def_rw("inertial_stereo_pnp_lambda", &cuvslam::internal::Internals::inertial_stereo_pnp_lambda,
               "Inertial-mode stereo fallback PNP Levenberg-Marquardt damping factor")
-      .def_rw("inertial_stereo_pnp_huber", &Odometry::TrackOptions::inertial_stereo_pnp_huber,
+      .def_rw("inertial_stereo_pnp_huber", &cuvslam::internal::Internals::inertial_stereo_pnp_huber,
               "Inertial-mode stereo fallback PNP Huber robustifier scale")
-      .def_rw("inertial_stereo_pnp_max_iteration", &Odometry::TrackOptions::inertial_stereo_pnp_max_iteration,
+      .def_rw("inertial_stereo_pnp_max_iteration", &cuvslam::internal::Internals::inertial_stereo_pnp_max_iteration,
               "Maximum inertial-mode stereo fallback PNP solver iterations")
-      .def_rw("inertial_stereo_pnp_recalculate_cov", &Odometry::TrackOptions::inertial_stereo_pnp_recalculate_cov,
+      .def_rw("inertial_stereo_pnp_recalculate_cov", &cuvslam::internal::Internals::inertial_stereo_pnp_recalculate_cov,
               "Whether inertial-mode stereo fallback PNP recomputes covariance after a successful solve")
       .def_rw("inertial_stereo_pnp_filter_new_observations",
-              &Odometry::TrackOptions::inertial_stereo_pnp_filter_new_observations,
+              &cuvslam::internal::Internals::inertial_stereo_pnp_filter_new_observations,
               "Whether inertial-mode stereo fallback PNP filters observations per camera")
-      .def_rw("inertial_stereo_pnp_max_obs_per_camera", &Odometry::TrackOptions::inertial_stereo_pnp_max_obs_per_camera,
+      .def_rw("inertial_stereo_pnp_max_obs_per_camera",
+              &cuvslam::internal::Internals::inertial_stereo_pnp_max_obs_per_camera,
               "Maximum inertial-mode stereo fallback PNP observations per camera")
-      .def_rw("inertial_stereo_pnp_point_z_thresh", &Odometry::TrackOptions::inertial_stereo_pnp_point_z_thresh,
+      .def_rw("inertial_stereo_pnp_point_z_thresh", &cuvslam::internal::Internals::inertial_stereo_pnp_point_z_thresh,
               "Minimum inertial-mode stereo fallback PNP landmark z-depth")
-      .def_rw("inertial_stereo_pnp_min_observations", &Odometry::TrackOptions::inertial_stereo_pnp_min_observations,
+      .def_rw("inertial_stereo_pnp_min_observations",
+              &cuvslam::internal::Internals::inertial_stereo_pnp_min_observations,
               "Minimum observations required for inertial-mode stereo fallback PNP")
-      .def_rw("inertial_stereo_pnp_cost_thresh", &Odometry::TrackOptions::inertial_stereo_pnp_cost_thresh,
+      .def_rw("inertial_stereo_pnp_cost_thresh", &cuvslam::internal::Internals::inertial_stereo_pnp_cost_thresh,
               "Inertial-mode stereo fallback PNP convergence threshold")
       // Inertial PNP Settings
-      .def_rw("imu_pnp_robustifier_scale", &Odometry::TrackOptions::imu_pnp_robustifier_scale,
+      .def_rw("imu_pnp_robustifier_scale", &cuvslam::internal::Internals::imu_pnp_robustifier_scale,
               "Inertial PNP robustifier scale")
-      .def_rw("imu_pnp_max_iteration", &Odometry::TrackOptions::imu_pnp_max_iteration,
+      .def_rw("imu_pnp_max_iteration", &cuvslam::internal::Internals::imu_pnp_max_iteration,
               "Maximum inertial PNP solver iterations")
-      .def_rw("imu_pnp_min_observations", &Odometry::TrackOptions::imu_pnp_min_observations,
+      .def_rw("imu_pnp_min_observations", &cuvslam::internal::Internals::imu_pnp_min_observations,
               "Minimum observations required for inertial PNP")
       // ICP Settings
-      .def_rw("icp_lambda", &Odometry::TrackOptions::icp_lambda, "ICP Levenberg-Marquardt damping factor")
-      .def_rw("icp_huber_vis", &Odometry::TrackOptions::icp_huber_vis,
+      .def_rw("icp_lambda", &cuvslam::internal::Internals::icp_lambda, "ICP Levenberg-Marquardt damping factor")
+      .def_rw("icp_huber_vis", &cuvslam::internal::Internals::icp_huber_vis,
               "ICP visual reprojection Huber robustifier scale")
-      .def_rw("icp_huber_depth", &Odometry::TrackOptions::icp_huber_depth, "ICP depth Huber robustifier scale")
-      .def_rw("icp_max_iteration", &Odometry::TrackOptions::icp_max_iteration,
+      .def_rw("icp_huber_depth", &cuvslam::internal::Internals::icp_huber_depth, "ICP depth Huber robustifier scale")
+      .def_rw("icp_max_iteration", &cuvslam::internal::Internals::icp_max_iteration,
               "Maximum ICP solver iterations without depth pyramid")
-      .def_rw("icp_cost_thresh", &Odometry::TrackOptions::icp_cost_thresh, "ICP convergence threshold")
-      .def_rw("icp_min_scale_level", &Odometry::TrackOptions::icp_min_scale_level,
+      .def_rw("icp_cost_thresh", &cuvslam::internal::Internals::icp_cost_thresh, "ICP convergence threshold")
+      .def_rw("icp_min_scale_level", &cuvslam::internal::Internals::icp_min_scale_level,
               "Finest ICP pyramid level to process")
-      .def_rw("icp_max_scale_level", &Odometry::TrackOptions::icp_max_scale_level,
+      .def_rw("icp_max_scale_level", &cuvslam::internal::Internals::icp_max_scale_level,
               "Coarsest ICP pyramid level to start from")
-      .def_rw("icp_num_iters_per_scale", &Odometry::TrackOptions::icp_num_iters_per_scale,
+      .def_rw("icp_num_iters_per_scale", &cuvslam::internal::Internals::icp_num_iters_per_scale,
               "ICP iterations per pyramid level")
-      .def_rw("icp_blending_alpha", &Odometry::TrackOptions::icp_blending_alpha,
+      .def_rw("icp_blending_alpha", &cuvslam::internal::Internals::icp_blending_alpha,
               "Blending weight between visual and depth ICP residuals")
-      .def("__repr__", [](const Odometry::TrackOptions& o) {
-        return nb::str("TrackOptions(num_desired_tracks={}, kf_survivor_from_last={}, ...)")
+      .def("__repr__", [](const cuvslam::internal::Internals& o) {
+        return nb::str("Internals(num_desired_tracks={}, kf_survivor_from_last={}, ...)")
             .format(o.num_desired_tracks, o.kf_survivor_from_last);
       });
 
@@ -613,7 +618,7 @@ NB_MODULE(pycuvslam, m) {
           [](Odometry& self, int64_t timestamp, const std::vector<nb::ndarray<nb::ro>>& images,
              const std::optional<std::vector<nb::ndarray<nb::ro>>>& masks = std::nullopt,
              const std::optional<std::vector<nb::ndarray<nb::ro>>>& depths = std::nullopt,
-             const std::optional<Odometry::TrackOptions>& options = std::nullopt) -> PoseEstimate {
+             const std::optional<cuvslam::internal::Internals>& internals = std::nullopt) -> PoseEstimate {
             if (masks.has_value()) {
               THROW_INVALID_ARG_IF(masks->size() != images.size() && !masks->empty(),
                                    "If the masks vector is not empty, its size must match the images vector size. "
@@ -640,11 +645,10 @@ NB_MODULE(pycuvslam, m) {
                                               : Odometry::ImageSet();
             auto depth_set = depths.has_value() ? ImageSetFromNDArrays(depths.value(), timestamp, ArrayType::Depth)
                                                 : Odometry::ImageSet();
-            return options.has_value() ? self.Track(image_set, mask_set, depth_set, *options)
-                                       : self.Track(image_set, mask_set, depth_set);
+            return self.Track(image_set, mask_set, depth_set, internals.has_value() ? &*internals : nullptr);
           },
           nb::arg("timestamp"), nb::arg("images"), nb::arg("masks") = nb::none(), nb::arg("depths") = nb::none(),
-          nb::arg("options") = nb::none(),
+          nb::arg("internals") = nb::none(),
           "Track a rig pose using current image frame.\n\n"
           "Synchronously tracks current image frame and returns a PoseEstimate.\n\n"
           "By default, this function uses visual odometry to compute a pose.\n"
@@ -731,7 +735,7 @@ NB_MODULE(pycuvslam, m) {
       .def(
           "apply_expert_parameters",
           [](Odometry& self, const nb::dict& parameters) {
-            std::vector<Odometry::ExpertParameter> params;
+            std::vector<cuvslam::internal::InternalParameter> params;
             params.reserve(parameters.size());
             // Materialise strings so string_views remain valid for the duration of the call.
             std::vector<std::string> keys, values;
@@ -742,7 +746,7 @@ NB_MODULE(pycuvslam, m) {
               values.push_back(nb::cast<std::string>(v));
               params.push_back({keys.back(), values.back()});
             }
-            self.ApplyExpertParameters(params);
+            self.ApplyPersistentInternalParameters(params);
           },
           nb::arg("parameters"),
           "Apply expert parameters by string key/value pairs.\n\n"

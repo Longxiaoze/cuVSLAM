@@ -40,6 +40,7 @@
 #include "common/types.h"
 #include "common/utils.h"
 #include "cuvslam/cuvslam2.h"
+#include "cuvslam/cuvslam2_internal.h"
 #include "cuvslam/internal.h"
 #include "utils/cuvslam_yaml_config.h"
 #include "utils/image_loader.h"
@@ -125,7 +126,7 @@ DEFINE_int32(cfg_depth_camera, 0, "Depth camera index");
 DEFINE_double(cfg_depth_scale_factor, kDefaultOdomCfg.rgbd_settings.depth_scale_factor, "Depth scale factor");
 DEFINE_bool(cfg_enable_depth_stereo_tracking, kDefaultOdomCfg.rgbd_settings.enable_depth_stereo_tracking,
             "Enable depth stereo tracking");
-// Expert SBA parameters — applied via ApplyExpertParameters() after tracker creation.
+// Expert SBA parameters — applied via ApplyPersistentInternalParameters() after tracker creation.
 // Only flags explicitly set on the command line are forwarded; unset flags keep the
 // library default.  mode and async are construction-time only and belong in cfg_* above.
 DEFINE_int32(expert_sba_num_frames, 7,
@@ -383,7 +384,7 @@ bool RunSlamLoadAndLocalizeOnMatchingFrame(Slam& slam, const Slam::ImageSet& ima
 }
 
 bool trackEdexDataSet(const std::string& data_folder, const Odometry::Config& odom_cfg, const Slam::Config& slam_cfg,
-                      const Odometry::TrackOptions& track_options,
+                      const cuvslam::internal::Internals& internals,
                       const std::map<std::string, std::string>& expert_params, const std::string& input_map_name,
                       const std::string& output_map_name) {
   std::vector<CameraId> camera_ids{StringToIntVector<CameraId>(FLAGS_cameras, ',')};
@@ -407,12 +408,12 @@ bool trackEdexDataSet(const std::string& data_folder, const Odometry::Config& od
   Rig rig = createRig(edex_file, edex_rig.get());
   std::unique_ptr<Odometry> odom = std::make_unique<Odometry>(rig, odom_cfg);
   if (!expert_params.empty()) {
-    std::vector<Odometry::ExpertParameter> params;
+    std::vector<cuvslam::internal::InternalParameter> params;
     params.reserve(expert_params.size());
     for (const auto& [k, v] : expert_params) {
       params.push_back({k, v});
     }
-    odom->ApplyExpertParameters(params);
+    odom->ApplyPersistentInternalParameters(params);
   }
   TraceMessage("Odometry tracker created");
 
@@ -514,7 +515,7 @@ bool trackEdexDataSet(const std::string& data_folder, const Odometry::Config& od
       }
     }
 
-    PoseEstimate pose_estimate = odom->Track(images, masks, depths, track_options);
+    PoseEstimate pose_estimate = odom->Track(images, masks, depths, &internals);
     if (!pose_estimate.world_from_rig.has_value()) {
       TraceWarning("Track(): Tracking lost at frame %zu.", frame);
       if (FLAGS_ignore_tracking_errors) {
@@ -583,7 +584,7 @@ bool trackEdexDataSet(const std::string& data_folder, const Odometry::Config& od
             for (auto&& im : dummy_images) {
               im.timestamp_ns += 1000;
             }
-            odom->Track(dummy_images, /*masks=*/{}, /*depths=*/{}, track_options);
+            odom->Track(dummy_images, /*masks=*/{}, /*depths=*/{}, &internals);
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
           }
           next_loc_frame = frame + FLAGS_loc_skip_frames + 1;
@@ -642,7 +643,7 @@ int main(int arg_c, char** arg_v) {
   // Start with default configurations
   Odometry::Config odom_cfg = Odometry::GetDefaultConfig();
   Slam::Config slam_cfg = Slam::GetDefaultConfig();
-  Odometry::TrackOptions track_options;
+  cuvslam::internal::Internals internals;
 
   // Load configs from YAML file if specified (command-line flags applied afterwards take precedence)
   std::map<std::string, std::string> expert_params;
@@ -656,8 +657,8 @@ int main(int arg_c, char** arg_v) {
       if (LoadSlamConfigFromFile(config_path, slam_cfg)) {
         std::cout << "Loaded SLAM config from file." << std::endl;
       }
-      if (LoadTrackOptionsFromFile(config_path, track_options)) {
-        std::cout << "Loaded per-frame track_options from file." << std::endl;
+      if (LoadInternalsFromFile(config_path, internals)) {
+        std::cout << "Loaded per-frame internals from file." << std::endl;
       }
       if (LoadExpertParamsFromFile(config_path, expert_params)) {
         std::cout << "Loaded expert_params from file." << std::endl;
@@ -749,7 +750,7 @@ int main(int arg_c, char** arg_v) {
   if (flag_is_set("expert_sba_use_winsorizer"))
     expert_params["sba.use_sba_winsorizer"] = FLAGS_expert_sba_use_winsorizer ? "true" : "false";
 
-  return trackEdexDataSet(FLAGS_dataset, odom_cfg, slam_cfg, track_options, expert_params, FLAGS_loc_input_map,
+  return trackEdexDataSet(FLAGS_dataset, odom_cfg, slam_cfg, internals, expert_params, FLAGS_loc_input_map,
                           FLAGS_output_map)
              ? 0
              : 1;

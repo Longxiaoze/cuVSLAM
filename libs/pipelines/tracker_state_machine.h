@@ -60,7 +60,7 @@ struct StateMachineSettings {
 // timeline only resets on dropped frames or explicit reset.
 //
 // Settings are passed per-call so they always reflect the latest values from
-// ApplyExpertParameters without requiring a getter/setter on a live object.
+// ApplyPersistentInternalParameters without requiring a getter/setter on a live object.
 class StateMachine {
 public:
   enum class State { Uninitialized, Initializing, Ok };

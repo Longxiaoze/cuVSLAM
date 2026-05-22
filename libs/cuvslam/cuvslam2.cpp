@@ -16,6 +16,7 @@
  */
 
 #include "cuvslam/cuvslam2.h"
+#include "cuvslam/cuvslam2_internal.h"
 
 #include <algorithm>
 #include <atomic>
@@ -49,9 +50,9 @@ namespace cuvslam {
 namespace {
 
 std::string_view TrackOptionName(std::string_view expression) {
-  constexpr std::string_view options_prefix = "options.";
-  if (expression.substr(0, options_prefix.size()) == options_prefix) {
-    return expression.substr(options_prefix.size());
+  constexpr std::string_view internals_prefix = "internals.";
+  if (expression.substr(0, internals_prefix.size()) == internals_prefix) {
+    return expression.substr(internals_prefix.size());
   }
   return expression;
 }
@@ -59,57 +60,58 @@ std::string_view TrackOptionName(std::string_view expression) {
 int32_t RequireNonNegative(int32_t value, std::string_view expression) {
   if (value < 0) {
     const std::string_view name = TrackOptionName(expression);
-    throw std::invalid_argument("TrackOptions::" + std::string(name) + " must be non-negative");
+    throw std::invalid_argument("Internals::" + std::string(name) + " must be non-negative");
   }
   return value;
 }
 
 #define REQUIRE_NON_NEGATIVE(x) RequireNonNegative((x), #x)
 
-// Builds a TrackPerFrameSettings from per-frame options. TrackOptions always carries concrete
-// values; pass TrackOptions{} to use all defaults. Add new per-frame categories to
+// Builds a TrackPerFrameSettings from per-frame options. Internals always carries concrete
+// values; pass Internals{} to use all defaults. Add new per-frame categories to
 // TrackPerFrameSettings rather than adding parameters here or to track().
-odom::TrackPerFrameSettings BuildTrackFrameSettings(const Odometry::TrackOptions& options) {
+odom::TrackPerFrameSettings BuildTrackFrameSettings(const cuvslam::internal::Internals& internals) {
   odom::TrackPerFrameSettings result;
-  result.sof.num_desired_tracks = options.num_desired_tracks;
-  result.sof.border_top = options.border_top;
-  result.sof.border_bottom = options.border_bottom;
-  result.sof.border_left = options.border_left;
-  result.sof.border_right = options.border_right;
-  result.sof.box3_prefilter = options.box3_prefilter;
-  result.sof.ransac_filter = options.ransac_filter;
-  result.kf.survivor_from_last = options.kf_survivor_from_last;
-  result.kf.max_timedelta_between_kfs_s = options.kf_max_timedelta_between_kfs_s;
-  result.vo_pnp.lambda = options.vo_pnp_lambda;
-  result.vo_pnp.huber = options.vo_pnp_huber;
-  result.vo_pnp.max_iteration = REQUIRE_NON_NEGATIVE(options.vo_pnp_max_iteration);
-  result.vo_pnp.recalculate_cov = options.vo_pnp_recalculate_cov;
-  result.vo_pnp.filter_new_observations = options.vo_pnp_filter_new_observations;
-  result.vo_pnp.max_obs_per_camera = REQUIRE_NON_NEGATIVE(options.vo_pnp_max_obs_per_camera);
-  result.vo_pnp.point_z_thresh = options.vo_pnp_point_z_thresh;
-  result.vo_pnp.min_observations = REQUIRE_NON_NEGATIVE(options.vo_pnp_min_observations);
-  result.vo_pnp.cost_thresh = options.vo_pnp_cost_thresh;
-  result.inertial_stereo_pnp.lambda = options.inertial_stereo_pnp_lambda;
-  result.inertial_stereo_pnp.huber = options.inertial_stereo_pnp_huber;
-  result.inertial_stereo_pnp.max_iteration = REQUIRE_NON_NEGATIVE(options.inertial_stereo_pnp_max_iteration);
-  result.inertial_stereo_pnp.recalculate_cov = options.inertial_stereo_pnp_recalculate_cov;
-  result.inertial_stereo_pnp.filter_new_observations = options.inertial_stereo_pnp_filter_new_observations;
-  result.inertial_stereo_pnp.max_obs_per_camera = REQUIRE_NON_NEGATIVE(options.inertial_stereo_pnp_max_obs_per_camera);
-  result.inertial_stereo_pnp.point_z_thresh = options.inertial_stereo_pnp_point_z_thresh;
-  result.inertial_stereo_pnp.min_observations = REQUIRE_NON_NEGATIVE(options.inertial_stereo_pnp_min_observations);
-  result.inertial_stereo_pnp.cost_thresh = options.inertial_stereo_pnp_cost_thresh;
-  result.imu_pnp.robustifier_scale = options.imu_pnp_robustifier_scale;
-  result.imu_pnp.max_iteration = REQUIRE_NON_NEGATIVE(options.imu_pnp_max_iteration);
-  result.imu_pnp.min_observations = REQUIRE_NON_NEGATIVE(options.imu_pnp_min_observations);
-  result.icp.lambda = options.icp_lambda;
-  result.icp.huber_vis = options.icp_huber_vis;
-  result.icp.huber_depth = options.icp_huber_depth;
-  result.icp.max_iteration = REQUIRE_NON_NEGATIVE(options.icp_max_iteration);
-  result.icp.cost_thresh = options.icp_cost_thresh;
-  result.icp.min_scale_level = REQUIRE_NON_NEGATIVE(options.icp_min_scale_level);
-  result.icp.max_scale_level = REQUIRE_NON_NEGATIVE(options.icp_max_scale_level);
-  result.icp.num_iters_per_scale = REQUIRE_NON_NEGATIVE(options.icp_num_iters_per_scale);
-  result.icp.blending_alpha = options.icp_blending_alpha;
+  result.sof.num_desired_tracks = internals.num_desired_tracks;
+  result.sof.border_top = internals.border_top;
+  result.sof.border_bottom = internals.border_bottom;
+  result.sof.border_left = internals.border_left;
+  result.sof.border_right = internals.border_right;
+  result.sof.box3_prefilter = internals.box3_prefilter;
+  result.sof.ransac_filter = internals.ransac_filter;
+  result.kf.survivor_from_last = internals.kf_survivor_from_last;
+  result.kf.max_timedelta_between_kfs_s = internals.kf_max_timedelta_between_kfs_s;
+  result.vo_pnp.lambda = internals.vo_pnp_lambda;
+  result.vo_pnp.huber = internals.vo_pnp_huber;
+  result.vo_pnp.max_iteration = REQUIRE_NON_NEGATIVE(internals.vo_pnp_max_iteration);
+  result.vo_pnp.recalculate_cov = internals.vo_pnp_recalculate_cov;
+  result.vo_pnp.filter_new_observations = internals.vo_pnp_filter_new_observations;
+  result.vo_pnp.max_obs_per_camera = REQUIRE_NON_NEGATIVE(internals.vo_pnp_max_obs_per_camera);
+  result.vo_pnp.point_z_thresh = internals.vo_pnp_point_z_thresh;
+  result.vo_pnp.min_observations = REQUIRE_NON_NEGATIVE(internals.vo_pnp_min_observations);
+  result.vo_pnp.cost_thresh = internals.vo_pnp_cost_thresh;
+  result.inertial_stereo_pnp.lambda = internals.inertial_stereo_pnp_lambda;
+  result.inertial_stereo_pnp.huber = internals.inertial_stereo_pnp_huber;
+  result.inertial_stereo_pnp.max_iteration = REQUIRE_NON_NEGATIVE(internals.inertial_stereo_pnp_max_iteration);
+  result.inertial_stereo_pnp.recalculate_cov = internals.inertial_stereo_pnp_recalculate_cov;
+  result.inertial_stereo_pnp.filter_new_observations = internals.inertial_stereo_pnp_filter_new_observations;
+  result.inertial_stereo_pnp.max_obs_per_camera =
+      REQUIRE_NON_NEGATIVE(internals.inertial_stereo_pnp_max_obs_per_camera);
+  result.inertial_stereo_pnp.point_z_thresh = internals.inertial_stereo_pnp_point_z_thresh;
+  result.inertial_stereo_pnp.min_observations = REQUIRE_NON_NEGATIVE(internals.inertial_stereo_pnp_min_observations);
+  result.inertial_stereo_pnp.cost_thresh = internals.inertial_stereo_pnp_cost_thresh;
+  result.imu_pnp.robustifier_scale = internals.imu_pnp_robustifier_scale;
+  result.imu_pnp.max_iteration = REQUIRE_NON_NEGATIVE(internals.imu_pnp_max_iteration);
+  result.imu_pnp.min_observations = REQUIRE_NON_NEGATIVE(internals.imu_pnp_min_observations);
+  result.icp.lambda = internals.icp_lambda;
+  result.icp.huber_vis = internals.icp_huber_vis;
+  result.icp.huber_depth = internals.icp_huber_depth;
+  result.icp.max_iteration = REQUIRE_NON_NEGATIVE(internals.icp_max_iteration);
+  result.icp.cost_thresh = internals.icp_cost_thresh;
+  result.icp.min_scale_level = REQUIRE_NON_NEGATIVE(internals.icp_min_scale_level);
+  result.icp.max_scale_level = REQUIRE_NON_NEGATIVE(internals.icp_max_scale_level);
+  result.icp.num_iters_per_scale = REQUIRE_NON_NEGATIVE(internals.icp_num_iters_per_scale);
+  result.icp.blending_alpha = internals.icp_blending_alpha;
   return result;
 }
 
@@ -626,8 +628,9 @@ void Odometry::RegisterImuMeasurement(uint32_t sensor_index, const ImuMeasuremen
 }
 
 PoseEstimate Odometry::Track(const ImageSet& images, const ImageSet& masks, const ImageSet& depths,
-                             const Odometry::TrackOptions& options) {
-  odom::TrackPerFrameSettings per_frame_setting = BuildTrackFrameSettings(options);
+                             const cuvslam::internal::Internals* internals) {
+  odom::TrackPerFrameSettings per_frame_setting =
+      BuildTrackFrameSettings(internals ? *internals : cuvslam::internal::Internals{});
   per_frame_setting.sba = impl->svo_settings.sba_settings;
   per_frame_setting.sm = impl->svo_settings.sm_settings;
 
@@ -832,12 +835,13 @@ std::unordered_map<uint64_t, Vector3f> Odometry::GetFinalLandmarks() const {
 
 const std::vector<uint8_t>& Odometry::GetPrimaryCameras() const { return impl->fig.primary_cameras(); }
 
-void Odometry::ApplyExpertParameters(const std::vector<ExpertParameter>& parameters) {
+void Odometry::ApplyPersistentInternalParameters(const std::vector<cuvslam::internal::InternalParameter>& parameters) {
   static std::once_flag warned;
   std::call_once(warned, [] {
     TraceWarning(
-        "ApplyExpertParameters: modifying expert parameters may cause instability or degraded tracking performance. "
-        "Use with caution. SBA settings are applied on the next keyframe trigger; only the latest value takes effect — "
+        "ApplyPersistentInternalParameters: modifying internal parameters (InternalParameter) may cause instability or "
+        "degraded tracking performance. "
+        "SBA settings are applied on the next keyframe trigger; only the latest value takes effect — "
         "any intermediate values set while SBA is running are overwritten.\n");
   });
 
@@ -846,7 +850,7 @@ void Odometry::ApplyExpertParameters(const std::vector<ExpertParameter>& paramet
   sba::Settings& sba = impl->svo_settings.sba_settings;
   pipelines::StateMachineSettings& sm = impl->svo_settings.sm_settings;
 
-  for (const ExpertParameter& parameter : parameters) {
+  for (const cuvslam::internal::InternalParameter& parameter : parameters) {
     const std::string_view key = parameter.key;
     const std::string_view value = parameter.value;
     // SBA settings (all modes)
@@ -866,7 +870,7 @@ void Odometry::ApplyExpertParameters(const std::vector<ExpertParameter>& paramet
         // StateMachine settings (Inertial mode only)
       } else if (key.substr(0, 3) == "sm.") {
         if (!has_sm) {
-          TraceWarning("ApplyExpertParameters: key \"%.*s\" requires Inertial mode (ignored)\n",
+          TraceWarning("ApplyPersistentInternalParameters: key \"%.*s\" requires Inertial mode (ignored)\n",
                        static_cast<int>(key.size()), key.data());
           continue;
         }
@@ -885,16 +889,16 @@ void Odometry::ApplyExpertParameters(const std::vector<ExpertParameter>& paramet
         } else if (key == "sm.max_time_period_ns") {
           sm.max_time_period_ns = common::ParseInt64(value);
         } else {
-          TraceWarning("ApplyExpertParameters: unknown key \"%.*s\" (ignored)\n", static_cast<int>(key.size()),
-                       key.data());
+          TraceWarning("ApplyPersistentInternalParameters: unknown key \"%.*s\" (ignored)\n",
+                       static_cast<int>(key.size()), key.data());
         }
       } else {
-        TraceWarning("ApplyExpertParameters: unknown key \"%.*s\" (ignored)\n", static_cast<int>(key.size()),
-                     key.data());
+        TraceWarning("ApplyPersistentInternalParameters: unknown key \"%.*s\" (ignored)\n",
+                     static_cast<int>(key.size()), key.data());
       }
     } catch (const std::exception& e) {
-      TraceWarning("ApplyExpertParameters: failed parsing key \"%.*s\": %s (ignored)\n", static_cast<int>(key.size()),
-                   key.data(), e.what());
+      TraceWarning("ApplyPersistentInternalParameters: failed parsing key \"%.*s\": %s (ignored)\n",
+                   static_cast<int>(key.size()), key.data(), e.what());
     }
   }
 }

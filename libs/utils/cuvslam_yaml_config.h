@@ -30,12 +30,12 @@ namespace cuvslam {
  * bindings should link `utils` alongside libcuvslam if they want file-based config.
  */
 
-/// @brief Load per-frame track options from the `track_options:` section of a YAML file.
+/// @brief Load per-frame internals from the `internals:` section of a YAML file.
 /// @param filepath Path to the YAML file.
-/// @param options Output TrackOptions to populate.
-/// @return true if the `track_options` section was found and applied, false if the section is absent.
+/// @param internals Output Internals to populate.
+/// @return true if the `internals` section was found and applied, false if the section is absent.
 /// @throws std::runtime_error if the file cannot be opened or parsed.
-bool LoadTrackOptionsFromFile(const char* filepath, Odometry::TrackOptions& options);
+bool LoadInternalsFromFile(const char* filepath, cuvslam::internal::Internals& internals);
 
 /// @brief Load odometry configuration from the `odometry:` section of a YAML file.
 /// @param filepath Path to the YAML file.
@@ -55,7 +55,7 @@ bool LoadSlamConfigFromFile(const char* filepath, Slam::Config& config);
 /// @brief Load expert parameters from the `expert_params:` section of a YAML file.
 ///
 /// Every key–value pair under `expert_params` is inserted into @p params as a string,
-/// exactly as `ApplyExpertParameters` expects.  Any key already present in @p params is
+/// exactly as `ApplyPersistentInternalParameters` expects.  Any key already present in @p params is
 /// left untouched, so CLI-flag overrides set before this call are preserved.
 ///
 /// @param filepath Path to the YAML file.

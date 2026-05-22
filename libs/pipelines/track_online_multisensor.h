@@ -118,8 +118,8 @@ private:
   std::unique_ptr<ImuFusionContext> imu_;
 
   // StateMachine settings. The inertial path forwards these to ImuFusionContext::finalize_frame
-  // every frame so that runtime updates from ApplyExpertParameters take immediate effect. Multisensor
-  // currently uses defaults; full ApplyExpertParameters wiring (via SolverPerFrameSettings) will be
+  // every frame so that runtime updates from ApplyPersistentInternalParameters take immediate effect. Multisensor
+  // currently uses defaults; full ApplyPersistentInternalParameters wiring (via SolverPerFrameSettings) will be
   // added when this solver is converted to the ISFMSolver interface.
   StateMachineSettings sm_settings_;
 

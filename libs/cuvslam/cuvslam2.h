@@ -38,6 +38,10 @@
 /// @endcond
 
 namespace cuvslam {
+namespace internal {
+struct Internals;
+struct InternalParameter;
+}  // namespace internal
 
 /**
  * @brief Get the version of the library.
@@ -499,172 +503,6 @@ public:
   static Config GetDefaultConfig() { return Config{}; }
 
   /**
-   * @brief Per-frame tracking options for Odometry::Track() (stateless)
-   *
-   * These options apply only to the current Track() call and do not affect subsequent frames.
-   * All fields carry default values; instantiate with TrackOptions{} and override only what you need.
-   *
-   * @code
-   * TrackOptions opts;
-   * opts.num_desired_tracks = 500;  // Override for this frame only
-   * auto pose = odom.Track(images, {}, {}, opts);
-   * @endcode
-   */
-  struct TrackOptions {
-    // ============================================================
-    // Feature Selection Settings (from sof::Settings)
-    // ============================================================
-
-    /// Number of desired feature tracks. Default: 450
-    int32_t num_desired_tracks = 450;
-
-    /// Image border regions to ignore (in pixels). Default: 0
-    int32_t border_top = 0;
-    int32_t border_bottom = 0;
-    int32_t border_left = 0;
-    int32_t border_right = 0;
-
-    /// Enable box filter preprocessing for this frame. Default: false
-    bool box3_prefilter = false;
-
-    /// Enable RANSAC filtering for this frame. Default: false
-    bool ransac_filter = false;
-
-    // ============================================================
-    // Keyframe Settings (from KeyFrameSettings)
-    // ============================================================
-
-    /// Keyframe selection threshold: frame becomes keyframe if survivor tracks
-    /// from last keyframe falls below this percentage (0-100). Default: 41.f
-    float kf_survivor_from_last = 41.f;
-
-    /// Maximum time delta between consecutive keyframes (in seconds). Default: 60
-    int64_t kf_max_timedelta_between_kfs_s = 60;
-
-    // ============================================================
-    // PNP Solver Settings - visual PNP tracking (stereo / multi-camera modes)
-    // ============================================================
-
-    /// Levenberg-Marquardt damping factor. Default: 1e-3
-    float vo_pnp_lambda = 1e-3f;
-
-    /// Huber robustifier scale for reprojection residuals. Default: 2e-2
-    float vo_pnp_huber = 2e-2f;
-
-    /// Maximum LM solver iterations. Default: 13
-    int32_t vo_pnp_max_iteration = 13;
-
-    /// Whether to recompute the covariance matrix after a successful solve. Default: true
-    bool vo_pnp_recalculate_cov = true;
-
-    /// Whether to filter/sort observations to max_obs_per_camera oldest tracks first. Default: true
-    bool vo_pnp_filter_new_observations = true;
-
-    /// Maximum observations fed to the solver per camera. Default: 270
-    int32_t vo_pnp_max_obs_per_camera = 270;
-
-    /// Minimum z-depth for a landmark to be used (in camera frame). Default: 0.01
-    float vo_pnp_point_z_thresh = 0.01f;
-
-    /// Minimum number of observations required to attempt a solve. Default: 13
-    int32_t vo_pnp_min_observations = 13;
-
-    /// Absolute convergence threshold for the PnP solver.
-    /// Solve succeeds when: (current_cost < vo_pnp_cost_thresh) || (current_cost < initial_cost).
-    /// The OR means either condition alone is sufficient: a low final cost always passes, and
-    /// any net improvement over the initial cost also passes regardless of its absolute value.
-    /// Because of the OR, setting vo_pnp_cost_thresh very large (e.g. FLT_MAX) makes the
-    /// absolute-threshold branch always true, rendering the relative-drop check irrelevant.
-    /// Default: 0.6
-    float vo_pnp_cost_thresh = 0.6f;
-
-    // ============================================================
-    // PNP Solver Settings - stereo fallback in inertial mode
-    // Defaults match pnp::PNPSettings::InertialSettings().
-    // ============================================================
-
-    /// Levenberg-Marquardt damping factor. Default: 1e-3
-    float inertial_stereo_pnp_lambda = 1e-3f;
-
-    /// Huber robustifier scale for reprojection residuals. Default: 0.1
-    float inertial_stereo_pnp_huber = 0.1f;
-
-    /// Maximum LM solver iterations. Default: 13
-    int32_t inertial_stereo_pnp_max_iteration = 13;
-
-    /// Whether to recompute the covariance matrix after a successful solve. Default: false
-    bool inertial_stereo_pnp_recalculate_cov = false;
-
-    /// Whether to filter/sort observations to max_obs_per_camera oldest tracks first. Default: true
-    bool inertial_stereo_pnp_filter_new_observations = true;
-
-    /// Maximum observations fed to the solver per camera. Default: 270
-    int32_t inertial_stereo_pnp_max_obs_per_camera = 270;
-
-    /// Minimum z-depth for a landmark to be used (in camera frame). Default: 0.01
-    float inertial_stereo_pnp_point_z_thresh = 0.01f;
-
-    /// Minimum number of observations required to attempt a solve. Default: 13
-    int32_t inertial_stereo_pnp_min_observations = 13;
-
-    /// Absolute convergence threshold for the inertial-mode stereo fallback PnP solver.
-    /// Default: 0.6
-    float inertial_stereo_pnp_cost_thresh = 0.6f;
-
-    // ============================================================
-    // Inertial PNP Solver Settings - IMU-fused tracking path
-    // ============================================================
-
-    /// Robustifier scale for inertial PNP reprojection residuals. Default: 0.4
-    float imu_pnp_robustifier_scale = 0.4f;
-
-    /// Maximum inertial PNP solver iterations. Default: 20
-    int32_t imu_pnp_max_iteration = 20;
-
-    /// Minimum number of observations required to attempt inertial PNP. Default: 25
-    int32_t imu_pnp_min_observations = 25;
-
-    // ============================================================
-    // ICP Solver Settings - mono-depth (RGB-D) mode only
-    // ============================================================
-
-    /// Levenberg-Marquardt damping factor. Default: 1e-2
-    float icp_lambda = 1e-2f;
-
-    /// Huber robustifier scale for visual reprojection residuals. Default: 1e-2
-    float icp_huber_vis = 1e-2f;
-
-    /// Huber robustifier scale for depth ICP residuals. Default: 5e-2
-    float icp_huber_depth = 5e-2f;
-
-    /// Maximum LM solver iterations (used when no depth pyramid, i.e. pure visual). Default: 20
-    int32_t icp_max_iteration = 20;
-
-    /// Convergence threshold (cost must not exceed initial cost). Default: 0.6
-    float icp_cost_thresh = 0.6f;
-
-    /// Finest pyramid level to process (0 = full resolution / finest). Default: 0
-    int32_t icp_min_scale_level = 0;
-
-    /// Coarsest pyramid level to start from (higher = coarser / lower resolution). Default: 4
-    /// Processing proceeds from icp_max_scale_level down to icp_min_scale_level (coarse to fine).
-    int32_t icp_max_scale_level = 4;
-
-    /// LM iterations per pyramid level when depth is available. Default: 20
-    int32_t icp_num_iters_per_scale = 20;
-
-    /// Blending weight between visual (alpha) and depth ICP (1-alpha) residuals. Default: 0.8
-    float icp_blending_alpha = 0.8f;
-  };
-
-  // TODO(vikuznetsov): remove when https://gcc.gnu.org/bugzilla/show_bug.cgi?id=88165 is fixed
-  /// @brief Get default track options.
-  ///
-  /// @see TrackOptions for default values.
-  /// @return default track options
-  static TrackOptions GetDefaultTrackOptions() { return TrackOptions{}; }
-
-  /**
    * @brief State of the odometry tracker
    *
    * Only available if data export is enabled in Config.
@@ -731,18 +569,16 @@ public:
    * camera; each entry is matched to its rig camera by Image::camera_index and every camera_index
    * must appear in MultisensorSettings::depth_camera_ids. Other modes must pass an empty array.
    * Must use ImageData::Encoding::MONO and ImageData::DataType::UINT16 or ImageData::DataType::FLOAT32.
-   * @param[in]  options (Optional) per-frame options that override default settings for this call only.
-   * The options do not affect subsequent Track() calls - each call is independent (stateless).
+   * @param[in]  internals (Optional) pointer to internal per-frame development parameters; pass nullptr (default) to
+   * use built-in defaults. Not intended for production use.
    *
    * @return On success `PoseEstimate` contains estimated rig pose, on failure `PoseEstimate::world_from_rig` will be
    * `nullopt`.
    * @throws std::invalid_argument if image parameters are invalid
    * @throws std::runtime_error in case of unexpected errors
-   *
-   * @see TrackOptions for available per-frame parameters
    */
   PoseEstimate Track(const ImageSet& images, const ImageSet& masks = {}, const ImageSet& depths = {},
-                     const TrackOptions& options = GetDefaultTrackOptions());
+                     const cuvslam::internal::Internals* internals = nullptr);
 
   /**
    * @brief Register IMU measurement
@@ -837,21 +673,12 @@ public:
   const std::vector<uint8_t>& GetPrimaryCameras() const;
 
   /**
-   * @brief Key/value pair for ApplyExpertParameters.
-   * @see ApplyExpertParameters for the list of supported keys.
-   */
-  struct ExpertParameter {
-    std::string_view key;    ///< Parameter name (e.g. `sba.num_sba_iterations`).
-    std::string_view value;  ///< Parameter value as a string.
-  };
-
-  /**
-   * @brief Apply expert parameters by string key/value pairs.
+   * @brief Apply internal parameters by string key/value pairs.
    *
    * Allows setting internal runtime settings by name. Unknown keys log a warning and are ignored.
    * Invalid values or keys not applicable to the current odometry mode throw std::invalid_argument.
    *
-   * Please use this API with caution!
+   * For internal use only.
    *
    * Supported keys (grouped by prefix):
    *
@@ -870,7 +697,7 @@ public:
    *
    * @param[in] parameters Key/value pairs to apply.
    */
-  void ApplyExpertParameters(const std::vector<ExpertParameter>& parameters);
+  void ApplyPersistentInternalParameters(const std::vector<cuvslam::internal::InternalParameter>& parameters);
 
 private:
   class Impl;

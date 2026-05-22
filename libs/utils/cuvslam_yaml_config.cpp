@@ -16,6 +16,7 @@
  */
 
 #include "utils/cuvslam_yaml_config.h"
+#include "cuvslam/cuvslam2_internal.h"
 
 #include <algorithm>
 #include <fstream>
@@ -67,58 +68,58 @@ YAML::Node LoadYamlRootMap(const char* filepath) {
 
 }  // namespace
 
-bool LoadTrackOptionsFromFile(const char* filepath, Odometry::TrackOptions& options) {
+bool LoadInternalsFromFile(const char* filepath, cuvslam::internal::Internals& internals) {
   YAML::Node root = LoadYamlRootMap(filepath);
-  YAML::Node node = root["track_options"];
+  YAML::Node node = root["internals"];
   if (!node || !node.IsMap()) {
     return false;
   }
-  if (YAML::Node v = node["num_desired_tracks"]) options.num_desired_tracks = v.as<int32_t>();
-  if (YAML::Node v = node["border_top"]) options.border_top = v.as<int32_t>();
-  if (YAML::Node v = node["border_bottom"]) options.border_bottom = v.as<int32_t>();
-  if (YAML::Node v = node["border_left"]) options.border_left = v.as<int32_t>();
-  if (YAML::Node v = node["border_right"]) options.border_right = v.as<int32_t>();
-  if (YAML::Node v = node["box3_prefilter"]) options.box3_prefilter = v.as<bool>();
-  if (YAML::Node v = node["ransac_filter"]) options.ransac_filter = v.as<bool>();
-  if (YAML::Node v = node["kf_survivor_from_last"]) options.kf_survivor_from_last = v.as<float>();
-  if (YAML::Node v = node["kf_max_timedelta_between_kfs_s"]) options.kf_max_timedelta_between_kfs_s = v.as<int64_t>();
-  if (YAML::Node v = node["vo_pnp_lambda"]) options.vo_pnp_lambda = v.as<float>();
-  if (YAML::Node v = node["vo_pnp_huber"]) options.vo_pnp_huber = v.as<float>();
-  if (YAML::Node v = node["vo_pnp_max_iteration"]) options.vo_pnp_max_iteration = v.as<int32_t>();
-  if (YAML::Node v = node["vo_pnp_recalculate_cov"]) options.vo_pnp_recalculate_cov = v.as<bool>();
-  if (YAML::Node v = node["vo_pnp_filter_new_observations"]) options.vo_pnp_filter_new_observations = v.as<bool>();
-  if (YAML::Node v = node["vo_pnp_max_obs_per_camera"]) options.vo_pnp_max_obs_per_camera = v.as<int32_t>();
-  if (YAML::Node v = node["vo_pnp_point_z_thresh"]) options.vo_pnp_point_z_thresh = v.as<float>();
-  if (YAML::Node v = node["vo_pnp_min_observations"]) options.vo_pnp_min_observations = v.as<int32_t>();
-  if (YAML::Node v = node["vo_pnp_cost_thresh"]) options.vo_pnp_cost_thresh = v.as<float>();
-  if (YAML::Node v = node["inertial_stereo_pnp_lambda"]) options.inertial_stereo_pnp_lambda = v.as<float>();
-  if (YAML::Node v = node["inertial_stereo_pnp_huber"]) options.inertial_stereo_pnp_huber = v.as<float>();
+  if (YAML::Node v = node["num_desired_tracks"]) internals.num_desired_tracks = v.as<int32_t>();
+  if (YAML::Node v = node["border_top"]) internals.border_top = v.as<int32_t>();
+  if (YAML::Node v = node["border_bottom"]) internals.border_bottom = v.as<int32_t>();
+  if (YAML::Node v = node["border_left"]) internals.border_left = v.as<int32_t>();
+  if (YAML::Node v = node["border_right"]) internals.border_right = v.as<int32_t>();
+  if (YAML::Node v = node["box3_prefilter"]) internals.box3_prefilter = v.as<bool>();
+  if (YAML::Node v = node["ransac_filter"]) internals.ransac_filter = v.as<bool>();
+  if (YAML::Node v = node["kf_survivor_from_last"]) internals.kf_survivor_from_last = v.as<float>();
+  if (YAML::Node v = node["kf_max_timedelta_between_kfs_s"]) internals.kf_max_timedelta_between_kfs_s = v.as<int64_t>();
+  if (YAML::Node v = node["vo_pnp_lambda"]) internals.vo_pnp_lambda = v.as<float>();
+  if (YAML::Node v = node["vo_pnp_huber"]) internals.vo_pnp_huber = v.as<float>();
+  if (YAML::Node v = node["vo_pnp_max_iteration"]) internals.vo_pnp_max_iteration = v.as<int32_t>();
+  if (YAML::Node v = node["vo_pnp_recalculate_cov"]) internals.vo_pnp_recalculate_cov = v.as<bool>();
+  if (YAML::Node v = node["vo_pnp_filter_new_observations"]) internals.vo_pnp_filter_new_observations = v.as<bool>();
+  if (YAML::Node v = node["vo_pnp_max_obs_per_camera"]) internals.vo_pnp_max_obs_per_camera = v.as<int32_t>();
+  if (YAML::Node v = node["vo_pnp_point_z_thresh"]) internals.vo_pnp_point_z_thresh = v.as<float>();
+  if (YAML::Node v = node["vo_pnp_min_observations"]) internals.vo_pnp_min_observations = v.as<int32_t>();
+  if (YAML::Node v = node["vo_pnp_cost_thresh"]) internals.vo_pnp_cost_thresh = v.as<float>();
+  if (YAML::Node v = node["inertial_stereo_pnp_lambda"]) internals.inertial_stereo_pnp_lambda = v.as<float>();
+  if (YAML::Node v = node["inertial_stereo_pnp_huber"]) internals.inertial_stereo_pnp_huber = v.as<float>();
   if (YAML::Node v = node["inertial_stereo_pnp_max_iteration"])
-    options.inertial_stereo_pnp_max_iteration = v.as<int32_t>();
+    internals.inertial_stereo_pnp_max_iteration = v.as<int32_t>();
   if (YAML::Node v = node["inertial_stereo_pnp_recalculate_cov"])
-    options.inertial_stereo_pnp_recalculate_cov = v.as<bool>();
+    internals.inertial_stereo_pnp_recalculate_cov = v.as<bool>();
   if (YAML::Node v = node["inertial_stereo_pnp_filter_new_observations"])
-    options.inertial_stereo_pnp_filter_new_observations = v.as<bool>();
+    internals.inertial_stereo_pnp_filter_new_observations = v.as<bool>();
   if (YAML::Node v = node["inertial_stereo_pnp_max_obs_per_camera"])
-    options.inertial_stereo_pnp_max_obs_per_camera = v.as<int32_t>();
+    internals.inertial_stereo_pnp_max_obs_per_camera = v.as<int32_t>();
   if (YAML::Node v = node["inertial_stereo_pnp_point_z_thresh"])
-    options.inertial_stereo_pnp_point_z_thresh = v.as<float>();
+    internals.inertial_stereo_pnp_point_z_thresh = v.as<float>();
   if (YAML::Node v = node["inertial_stereo_pnp_min_observations"])
-    options.inertial_stereo_pnp_min_observations = v.as<int32_t>();
-  if (YAML::Node v = node["inertial_stereo_pnp_cost_thresh"]) options.inertial_stereo_pnp_cost_thresh = v.as<float>();
-  if (YAML::Node v = node["imu_pnp_robustifier_scale"]) options.imu_pnp_robustifier_scale = v.as<float>();
-  if (YAML::Node v = node["imu_pnp_max_iteration"]) options.imu_pnp_max_iteration = v.as<int32_t>();
-  if (YAML::Node v = node["imu_pnp_min_observations"]) options.imu_pnp_min_observations = v.as<int32_t>();
-  if (YAML::Node v = node["icp_lambda"]) options.icp_lambda = v.as<float>();
-  if (YAML::Node v = node["icp_huber_vis"]) options.icp_huber_vis = v.as<float>();
-  if (YAML::Node v = node["icp_huber_depth"]) options.icp_huber_depth = v.as<float>();
-  if (YAML::Node v = node["icp_max_iteration"]) options.icp_max_iteration = v.as<int32_t>();
-  if (YAML::Node v = node["icp_cost_thresh"]) options.icp_cost_thresh = v.as<float>();
-  if (YAML::Node v = node["icp_min_scale_level"]) options.icp_min_scale_level = v.as<int32_t>();
-  if (YAML::Node v = node["icp_max_scale_level"]) options.icp_max_scale_level = v.as<int32_t>();
-  if (YAML::Node v = node["icp_num_iters_per_scale"]) options.icp_num_iters_per_scale = v.as<int32_t>();
-  if (YAML::Node v = node["icp_blending_alpha"]) options.icp_blending_alpha = v.as<float>();
-  WarnUnknownKeys(node, "TrackOptions",
+    internals.inertial_stereo_pnp_min_observations = v.as<int32_t>();
+  if (YAML::Node v = node["inertial_stereo_pnp_cost_thresh"]) internals.inertial_stereo_pnp_cost_thresh = v.as<float>();
+  if (YAML::Node v = node["imu_pnp_robustifier_scale"]) internals.imu_pnp_robustifier_scale = v.as<float>();
+  if (YAML::Node v = node["imu_pnp_max_iteration"]) internals.imu_pnp_max_iteration = v.as<int32_t>();
+  if (YAML::Node v = node["imu_pnp_min_observations"]) internals.imu_pnp_min_observations = v.as<int32_t>();
+  if (YAML::Node v = node["icp_lambda"]) internals.icp_lambda = v.as<float>();
+  if (YAML::Node v = node["icp_huber_vis"]) internals.icp_huber_vis = v.as<float>();
+  if (YAML::Node v = node["icp_huber_depth"]) internals.icp_huber_depth = v.as<float>();
+  if (YAML::Node v = node["icp_max_iteration"]) internals.icp_max_iteration = v.as<int32_t>();
+  if (YAML::Node v = node["icp_cost_thresh"]) internals.icp_cost_thresh = v.as<float>();
+  if (YAML::Node v = node["icp_min_scale_level"]) internals.icp_min_scale_level = v.as<int32_t>();
+  if (YAML::Node v = node["icp_max_scale_level"]) internals.icp_max_scale_level = v.as<int32_t>();
+  if (YAML::Node v = node["icp_num_iters_per_scale"]) internals.icp_num_iters_per_scale = v.as<int32_t>();
+  if (YAML::Node v = node["icp_blending_alpha"]) internals.icp_blending_alpha = v.as<float>();
+  WarnUnknownKeys(node, "Internals",
                   {"num_desired_tracks",
                    "border_top",
                    "border_bottom",
