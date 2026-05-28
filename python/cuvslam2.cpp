@@ -412,8 +412,15 @@ NB_MODULE(pycuvslam, m) {
       .value("Mono", Odometry::OdometryMode::Mono, "Uses a single camera, tracking is accurate up to scale.")
       .value("Multisensor", Odometry::OdometryMode::Multisensor,
              "Unified multi-sensor mode. Supports any mix of plain RGB cameras, RGB-D cameras (any subset of the rig), "
-             "and a single optional IMU. IMU fusion turns on automatically when the rig contains an IMU. "
-             "Requires a build with cuNLS support.")
+             "and a single optional IMU. IMU fusion turns on automatically when the rig contains an IMU.\n\n"
+             "Requirements (constructor raises ValueError otherwise):\n"
+             " - Build must have cuNLS enabled (-DUSE_CUNLS=ON).\n"
+             " - Same calibration requirement as Multicamera / Inertial: the rig must contain at least one camera pair "
+             "with overlapping frustums (a stereo pair). Pure non-overlapping rigs are rejected even when depth is "
+             "supplied.\n"
+             " - Depth images passed to track() must be 2D uint16 ndarrays (cuVSLAM's C++ contract also accepts "
+             "FLOAT32, but the current PyCuVSLAM binding only exposes uint16); each depth image's camera_index must "
+             "appear in MultisensorSettings.depth_camera_ids.")
       .export_values();
 
   // Multisensor Settings class — describes available sensors at construction time for OdometryMode::Multisensor.

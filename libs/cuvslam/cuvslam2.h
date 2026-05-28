@@ -384,7 +384,16 @@ public:
     /// RGB-D cameras (any subset of the rig), with or without a single IMU. IMU fusion
     /// is enabled automatically when the rig contains an IMU; sba_mode is forced to the
     /// inertial bundler in that case. Per-camera depth presence is configured through
-    /// MultisensorSettings::depth_camera_ids. Requires a build with cuNLS support.
+    /// MultisensorSettings::depth_camera_ids.
+    ///
+    /// @note Requirements (construction throws `std::invalid_argument` otherwise):
+    ///  - Build must have cuNLS enabled (`-DUSE_CUNLS=ON`).
+    ///  - Same calibration requirement as Multicamera / Inertial: the rig must contain
+    ///    at least one camera pair with overlapping frustums (a stereo pair). Pure
+    ///    non-overlapping rigs are rejected even when depth is supplied.
+    ///  - Depth images passed to `Track()` must use `Encoding::MONO` with
+    ///    `DataType::UINT16` or `DataType::FLOAT32`; see `Track()` for the per-frame
+    ///    matching rules against `MultisensorSettings::depth_camera_ids`.
     Multisensor,
   };
 

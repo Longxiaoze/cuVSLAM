@@ -13,6 +13,7 @@ cuVSLAM is the library by NVIDIA, providing various Visual Tracking Camera modes
 
 ## Table of Contents
 
+- [Tracking modes](#tracking-modes)
 - [Using cuVSLAM](#using-cuvslam)
 - [Performance](#performance)
 - [Install PyCuVSLAM](#install-pycuvslam)
@@ -22,6 +23,31 @@ cuVSLAM is the library by NVIDIA, providing various Visual Tracking Camera modes
 - [Feedback](#feedback)
 - [License](#license)
 - [Citation](#citation)
+
+# Tracking modes
+
+cuVSLAM's tracker supports several odometry modes selected via `Odometry::Config::odometry_mode`
+(C++) / `cuvslam.Odometry.OdometryMode` (Python). Modes differ in which sensors they require, which
+ones they can additionally fuse, and how they handle scale. Pick the mode that matches the most
+informative sensor set on your rig:
+
+| Mode | Required sensors | Optional sensors | Mode-specific settings | When to use |
+|------|------------------|------------------|------------------------|-------------|
+| `Mono` | 1 camera | — | — | Single-camera tracking; cheapest setup but scale-ambiguous. |
+| `RGBD` | 1 RGB-D camera (aligned RGB + depth) | — | `RGBDSettings` | Single depth-aligned camera (e.g. RealSense, TUM RGB-D). |
+| `Multicamera` | ≥2 cameras with at least one overlapping pair (a stereo pair) | up to 32 cameras total | — | Stereo or multi-stereo rigs. Most accurate purely-visual mode. |
+| `Inertial` | 1 stereo pair + 1 IMU | — | — | Stereo VIO. Adds robustness to brief visual failures. |
+| `Multisensor` | At least one camera pair with overlapping frustums; cuNLS-enabled build | RGB-D cameras (any subset), 0 or 1 IMU | `MultisensorSettings` | Any-mix RGB / RGB-D rigs with optional IMU. Use when the legacy modes don't fit: ≥3 cameras of mixed RGB and RGB-D types; a multi-camera rig where only a subset provides depth; or RGB-D + IMU fusion (note that `Inertial` mode is stereo-only). |
+
+Notes:
+- `Multisensor` is the only mode that requires a cuNLS-enabled build — see
+  [Optional: cuNLS](#optional-cunls). All other modes work with the default build.
+- IMU fusion is available in `Inertial` (always on) and `Multisensor` (auto-enabled when
+  `Rig::imus` is non-empty).
+- For a runnable Multisensor walkthrough on a multi-RGB-D + IMU rig, see
+  [examples/multisensor/](examples/multisensor/README.md). For the full per-field API reference,
+  see the [C++](https://nvidia-isaac.github.io/cuVSLAM/cpp/) or
+  [Python](https://nvidia-isaac.github.io/cuVSLAM/python/) docs.
 
 # Using cuVSLAM
 

@@ -444,9 +444,15 @@ See [Isaac ROS cuVSLAM parameters][].
 
 ### Pick the best odometry mode
 
-Accuracy ranking from least accurate to most accurate:
+Approximate accuracy ranking, least to most accurate:
 
-Mono->RGBD->Stereo Inertial->Stereo->Multicamera
+Mono → RGBD → Stereo Inertial → Stereo → Multicamera ≈ Multisensor
+
+Multisensor (see [examples/multisensor/](examples/multisensor/README.md)) does not slot at a fixed
+position — its accuracy scales with the sensor set it is given. A single RGB-D + IMU rig in
+Multisensor is roughly RGBD-class, whereas a multi-stereo + RGB-D + IMU rig in Multisensor matches
+or exceeds Multicamera. Use Multisensor when you have a mixed-camera-type rig or want IMU fusion on
+a non-stereo configuration; otherwise prefer the mode that exactly matches your rig.
 
 ### Adjust motion prediction
 

@@ -14,7 +14,9 @@ PyCuVSLAM supports multiple visual tracking modes. You can specify the desired t
 
 * **Monocular**: Visual tracking using a monocular camera. This mode provides accurate camera rotation estimation but does not estimate scale. (set as `OdometryMode(3)` or `OdometryMode.Mono`)
 
-PyCuVSLAM supports all tracking modes on the EuRoC MAV dataset except *Mono-Depth*. To experiment with *Mono-Depth* tracking, please refer to the [TUM-RGBD dataset example](../tum/README.md). You can try different tracking modes by modifying the following line in `track_euroc.py`:
+* **Multisensor**: Unified mode that accepts any mix of plain RGB and RGB-D cameras with an optional single IMU (set as `OdometryMode(4)` or `OdometryMode.Multisensor`). Requires a cuNLS-enabled build and is configured via `MultisensorSettings`; see [examples/multisensor/](../multisensor/README.md) for a runnable walkthrough.
+
+PyCuVSLAM exercises three modes on the EuRoC MAV dataset — Stereo (`Multicamera`), Stereo-Inertial (`Inertial`), and Monocular (`Mono`) — because *Mono-Depth* has no aligned depth stream (see the [TUM-RGBD dataset example](../tum/README.md)) and *Multisensor* has its own [example](../multisensor/README.md). You can try different tracking modes by modifying the following line in `track_euroc.py`:
 
 ```python
 euroc_tracking_mode = cuvslam.Tracker.OdometryMode(1)

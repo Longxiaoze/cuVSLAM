@@ -63,7 +63,7 @@ Explore various examples to quickly get started with cuVSLAM using [Python API (
     - [R2B Galileo Dataset](multicamera_edex/README.md#r2b-galileo-dataset)
     - [RealSense Live Camera](realsense/README.md#running-multicamera-odometry)
 
-- **Multisensor Odometry (multi RGB-D + IMU)**
+- **Multisensor Odometry (any-mix RGB / RGB-D, optional IMU)**
     - [Tartan Ground Dataset](multisensor/README.md)
 
 ### SLAM Examples
