@@ -464,19 +464,31 @@ bool SolverSfMInertial::predict_pose(Isometry3T& pose) const {
 
 void SolverSfMInertial::set_verbose(bool verbose) { verbose_ = verbose; }
 
+// Reports whether the IMU stream covers the frame interval reliably. See the matching helper in
+// imu_fusion_context.cpp for the rationale — short frame intervals previously read as 33%-drop
+// false positives from normal IMU phase jitter.
 bool check_imu_drops(sba_imu::IMUPreintegration& preint, const imu::ImuCalibration& calib, int64_t start_time_ns,
                      int64_t end_time_ns) {
-  int preint_size = static_cast<int>(preint.size());
-  float dT_s = static_cast<float>((end_time_ns - start_time_ns) * 1e-9f);
-
-  int correct_imu_size = static_cast<int>(calib.frequency() * 0.95 * dT_s);
-
-  size_t delta = std::max(correct_imu_size - preint_size, 0);
-
-  float drop_ratio = static_cast<float>(delta) / static_cast<float>(correct_imu_size);
-
-  if (drop_ratio > 0.1) {
-    TraceWarning("Lost IMU msgs: %d, Frame time delta = %f [s], drop ratio = %f [%]", delta, dT_s, drop_ratio * 100);
+  if (start_time_ns < 0 || end_time_ns <= start_time_ns) {
+    return true;
+  }
+  const float freq = calib.frequency();
+  if (freq <= 0.f) {
+    return true;
+  }
+  const float dT_s = static_cast<float>((end_time_ns - start_time_ns) * 1e-9f);
+  const float expected = freq * dT_s;
+  const float actual = static_cast<float>(preint.size());
+  // Bound the slack by half the expected count so short intervals can't hide a genuine dropout
+  // (otherwise e.g. expected=2 with actual=0 would still report healthy). Matches the helper in
+  // imu_fusion_context.cpp.
+  constexpr float kJitterMarginSamples = 2.f;
+  const float effective_jitter = std::min(kJitterMarginSamples, expected * 0.5f);
+  const float missing = std::max(0.f, expected - actual - effective_jitter);
+  const float drop_ratio = missing / expected;
+  if (drop_ratio > 0.1f) {
+    TraceWarning("Lost IMU msgs: %d, Frame time delta = %f [s], drop ratio = %f [%]", static_cast<int>(missing + 0.5f),
+                 dT_s, drop_ratio * 100);
     return false;
   }
   return true;

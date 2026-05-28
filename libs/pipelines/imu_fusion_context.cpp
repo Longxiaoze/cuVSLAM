@@ -29,22 +29,36 @@ using Vector15T = Eigen::Matrix<float, 15, 1>;
 
 namespace {
 
-// Reports whether IMU samples accumulated between two timestamps cover at least 90% of the
-// expected count (calib.frequency * dt). This catches dropped IMU packets that would otherwise
-// silently corrupt the IMU prior.
+// Reports whether the IMU stream covers the frame interval reliably. Counts samples in the
+// preintegration vs the nominal expected count (calib.frequency * dT), absorbing a small jitter
+// margin so normal sub-sample phase offsets don't flag as drops. The previous check truncated the
+// expected count to int and divided by it, so on short frame intervals (e.g. 100 Hz IMU with
+// 30 fps frames, expected count ~3) a single sample landing just outside [start_ts, end_ts] read
+// as a 33% drop — even though the IMU stream was healthy.
 bool check_imu_drops(sba_imu::IMUPreintegration& preint, const imu::ImuCalibration& calib, int64_t start_time_ns,
                      int64_t end_time_ns) {
-  int preint_size = static_cast<int>(preint.size());
-  float dT_s = static_cast<float>((end_time_ns - start_time_ns) * 1e-9f);
-
-  int correct_imu_size = static_cast<int>(calib.frequency() * 0.95 * dT_s);
-
-  size_t delta = std::max(correct_imu_size - preint_size, 0);
-
-  float drop_ratio = static_cast<float>(delta) / static_cast<float>(correct_imu_size);
-
-  if (drop_ratio > 0.1) {
-    TraceWarning("Lost IMU msgs: %d, Frame time delta = %f [s], drop ratio = %f [%]", delta, dT_s, drop_ratio * 100);
+  // First frame: prev_pose_ts_ns is sentinel (-1); no integration interval to validate.
+  if (start_time_ns < 0 || end_time_ns <= start_time_ns) {
+    return true;
+  }
+  const float freq = calib.frequency();
+  if (freq <= 0.f) {
+    return true;
+  }
+  const float dT_s = static_cast<float>((end_time_ns - start_time_ns) * 1e-9f);
+  const float expected = freq * dT_s;
+  const float actual = static_cast<float>(preint.size());
+  // Allow up to ~2 samples of slack for phase/jitter (IMU timestamps are rarely periodic to within
+  // a fraction of the nominal period — see e.g. multi_rgbd indoor where sample gaps span 5–20 ms
+  // around a 10 ms nominal). Bound the slack by half the expected count so short intervals can't
+  // hide a genuine dropout (otherwise e.g. expected=2 with actual=0 would still report healthy).
+  constexpr float kJitterMarginSamples = 2.f;
+  const float effective_jitter = std::min(kJitterMarginSamples, expected * 0.5f);
+  const float missing = std::max(0.f, expected - actual - effective_jitter);
+  const float drop_ratio = missing / expected;
+  if (drop_ratio > 0.1f) {
+    TraceWarning("Lost IMU msgs: %d, Frame time delta = %f [s], drop ratio = %f [%]", static_cast<int>(missing + 0.5f),
+                 dT_s, drop_ratio * 100);
     return false;
   }
   return true;
@@ -178,11 +192,9 @@ bool ImuFusionContext::solve_inertial(const std::unordered_map<TrackId, Vector3T
   }
 
   TRACE_EVENT ev = profiler_domain_.trace_event("solve_inertial");
-  // The cuNLS LM uses cunls::SE3BetweenFactorBatch with an IMU-derived Delta plus bias state
-  // blocks constrained by zero-prior + RW-toward-prev factors.  run_rgbd_inertial_solve writes
-  // the LM-refined biases into curr_pose_ via InertialPosteriorOutput.  Velocity is not a state
-  // block in this design (the IMU between factor bakes prev_velocity in as a constant), so it
-  // is recomputed from the visual translation delta.
+  // The cuNLS LM uses cunls::SE3BetweenFactorBatch with an IMU-derived Delta; velocity / biases
+  // are baked in as constants in the Delta, so the solve does not refine them.  Pose is the only
+  // state the LM moves.
   if (!run_rgbd_inertial_solve(pose_estimator_, calib_, landmarks, observations, depth_infos, planes, depth_points,
                                *maybe_gravity, prev_pose_, curr_pose_)) {
     return false;

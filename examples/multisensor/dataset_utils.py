@@ -105,6 +105,11 @@ def load_depth(depth_path: str) -> np.ndarray:
     `(H, W) uint16`, so we convert to millimetres and clip to the uint16 range
     (sky pixels would otherwise wrap around). cuvslam undoes the scale via
     `OdometryMultisensorSettings.depth_scale_factor=DEPTH_SCALE_MM`.
+
+    PNG path uses cv2.imread + view('<f4') exactly as the official TartanAir tools loader
+    (castacks/tartanairpy reader.depth_rgba_float32) — cv2 returns the file's 4 channel bytes
+    in BGRA order, which is the byte order the float32 value was packed in.  PIL.Image.open
+    returns RGBA and would silently produce wrong floats (R↔B byte swap garbles every value).
     """
     if not os.path.exists(depth_path):
         raise FileNotFoundError(f"Depth file not found: {depth_path}")
@@ -112,9 +117,12 @@ def load_depth(depth_path: str) -> np.ndarray:
     if depth_path.endswith('.npy'):
         depth_m = np.load(depth_path).astype(np.float32, copy=False)
     elif depth_path.endswith('.png'):
-        rgba = np.asarray(Image.open(depth_path))
+        import cv2  # local import: only this branch needs it
+        rgba = cv2.imread(depth_path, cv2.IMREAD_UNCHANGED)
+        if rgba is None:
+            raise OSError(f"cv2 failed to read depth PNG: {depth_path}")
         if rgba.ndim == 3 and rgba.shape[2] == 4:
-            depth_m = rgba.view(np.float32).reshape(rgba.shape[:2]).copy()
+            depth_m = rgba.view('<f4').reshape(rgba.shape[:2]).copy()
         else:
             depth_m = rgba.astype(np.float32)
     else:

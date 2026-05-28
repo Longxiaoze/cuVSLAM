@@ -108,6 +108,7 @@ cfg = vslam.Tracker.OdometryConfig(
     multisensor_settings=multisensor_settings,
     enable_final_landmarks_export=True,
     rectified_stereo_camera=False,
+    async_sba=False,
 )
 
 tracker = vslam.Tracker(rig, cfg)
