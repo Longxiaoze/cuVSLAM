@@ -47,13 +47,18 @@ bool ImageCast::cast(void* data, const ImageEncoding& encoding, const ImageShape
   } else if (encoding == ImageEncoding::RGB8) {
     TRACE_EVENT ev = profiler_domain_.trace_event("CastRGB2GrayScale", profiler_color_);
 
+    // RGB input expands each pixel into three bytes. Keep both multiplications
+    // checked so a malicious or corrupted shape cannot shrink the staging
+    // allocation while the copy still uses the full image dimensions.
+    const size_t rgb_pixels =
+        CheckedMul(static_cast<size_t>(image_shape.width), static_cast<size_t>(image_shape.height));
+    const size_t rgb_elements = CheckedMul(rgb_pixels, 3);
     if (gpu_array_rgb == nullptr) {
-      gpu_array_rgb = std::make_unique<GPUOnlyArray<uint8_t>>(image_shape.width * image_shape.height * 3);
+      gpu_array_rgb = std::make_unique<GPUOnlyArray<uint8_t>>(rgb_elements);
     }
 
-    CUDA_CHECK(cudaMemcpyAsync((void*)gpu_array_rgb->ptr(), (void*)data,
-                               image_shape.width * image_shape.height * 3 * sizeof(uint8_t), cudaMemcpyHostToDevice,
-                               s));
+    CUDA_CHECK(
+        cudaMemcpyAsync((void*)gpu_array_rgb->ptr(), (void*)data, rgb_elements, cudaMemcpyHostToDevice, s));
     uint2 size = {(unsigned)image_shape.width, (unsigned)image_shape.height};
     error = cast_image_rgb(gpu_array_rgb->ptr(), size.x * 3, gpu_image.ptr(), gpu_image.pitch(), size, s);
   }
