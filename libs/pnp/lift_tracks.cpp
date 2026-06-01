@@ -15,8 +15,6 @@
  * of the software or derivative works thereof, you agree to be bound by this License.
  */
 
-#include <iostream>
-
 #include "common/log.h"
 #include "epipolar/camera_selection.h"
 
@@ -28,16 +26,16 @@ void VisualICP::lift_mono_tracks(const IcpInfo& inputs, const Isometry3T& world_
                                  const std::vector<camera::Observation>& observations,
                                  std::vector<cuvslam::pipelines::Landmark>& landmarks) const {
   landmarks.clear();
-
-  std::vector<cuvslam::cuda::GPUICPTools::ObsLmPair> tracks;
-  tracks.reserve(observations.size());
+  gpu_tracks_.clear();
+  gpu_tracks_.reserve(observations.size());
 
   cuvslam::cuda::GPUICPTools::ObsLmPair pair;
+  pair.lm_xyz = {0.f, 0.f, 0.f};
 
   for (const auto& obs : observations) {
     pair.obs_xy = {obs.xy.x(), obs.xy.y()};
 
-    tracks.push_back(pair);
+    gpu_tracks_.push_back(pair);
   }
 
   const auto& intrinsics = *rig_.intrinsics[inputs.depth_id];
@@ -45,17 +43,17 @@ void VisualICP::lift_mono_tracks(const IcpInfo& inputs, const Isometry3T& world_
   const Vector2T& focal = intrinsics.getFocal();
   const Vector2T& principal = intrinsics.getPrincipal();
 
-  std::vector<Vector3T> lms;
+  lifted_landmarks_.clear();
 
-  icp_tools_.lift_points(inputs.curr_depth[0], focal, principal, tracks, lms);
+  icp_tools_.lift_points(inputs.curr_depth[0], focal, principal, gpu_tracks_, lifted_landmarks_);
 
   Isometry3T world_from_depth = world_from_rig * rig_.camera_from_rig[inputs.depth_id].inverse();
 
-  landmarks.reserve(tracks.size());
+  landmarks.reserve(gpu_tracks_.size());
 
-  for (size_t i = 0; i < tracks.size(); i++) {
+  for (size_t i = 0; i < lifted_landmarks_.size(); i++) {
     const auto& obs = observations[i];
-    const Vector3T& lm = lms[i];
+    const Vector3T& lm = lifted_landmarks_[i];
     if (lm.z() > 1e-1f) {
       landmarks.push_back({obs.id, world_from_depth * lm});
     }

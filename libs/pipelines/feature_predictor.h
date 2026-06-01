@@ -33,6 +33,7 @@ public:
 private:
   const map::UnifiedMap& map_;
   camera::Rig rig_;
+  mutable map::TrackIdMap map_landmarks_;
 
   profiler::VioProfiler::DomainHelper profiler_domain_ = profiler::VioProfiler::DomainHelper("FeaturePredictor");
 };

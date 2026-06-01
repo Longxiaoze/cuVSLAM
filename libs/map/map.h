@@ -70,7 +70,9 @@ public:
 
   // for pnp
   Map<TrackId, Vector3T> get_recent_landmarks() const;
+  void get_recent_landmarks(Map<TrackId, Vector3T>& out) const;
   TrackIdMap get_recent_landmarks(CameraId cam_id) const;
+  void get_recent_landmarks(CameraId cam_id, TrackIdMap& out) const;
   struct KeyframeWithPreint {
     KeyframeWithPreint(const KeyframeWithPreint& other) = default;
     KeyframeWithPreint(KeyframeWithPreint&& other) = default;

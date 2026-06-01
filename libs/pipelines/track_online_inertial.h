@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <unordered_map>
 #include <vector>
 
 #include "camera/observation.h"
@@ -118,6 +119,11 @@ private:
 
   sba_imu::IMUPreintegration last_frame_preint_;  // since last frame for next frame
   bool integrated;
+
+  std::vector<camera::Observation> obs_vector_;
+  map::Map<TrackId, Vector3T> recent_landmarks_;
+  std::unordered_map<TrackId, Track> pnp_landmarks_;
+  map::Map<TrackId, Vector3T> stereo_pnp_landmarks_;
 
   void exportTracks(const std::vector<camera::Observation>& observations, std::vector<Track2D>& out_tracks2d,
                     Tracks3DMap& out_tracks3d, const Isometry3T& camera_from_world) const;

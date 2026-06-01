@@ -42,6 +42,14 @@ MultisensorOdometry::MultisensorOdometry(const camera::Rig& rig, const camera::F
       map_(20),
       feature_predictor_(std::make_shared<pipelines::FeaturePredictor>(map_, rig)),
       solver_(make_solver(map_, rig, settings)) {
+  observations_.reserve(rig.num_cameras);
+  depth_cam_ids_.reserve(rig.num_cameras);
+  depth_info_storage_.reserve(rig.num_cameras);
+  depth_infos_.reserve(rig.num_cameras);
+  for (CameraId cam_id = 0; cam_id < rig.num_cameras; ++cam_id) {
+    observations_.try_emplace(cam_id);
+  }
+
   sof::Implementation implementation = sof::Implementation::kCPU;
   if (use_gpu) {
 #ifdef USE_CUDA
@@ -84,14 +92,16 @@ bool MultisensorOdometry::track(const Sources& curr_sources, const DepthSources&
   }
 
   sof::FrameState frame_type;
-  std::unordered_map<CameraId, std::vector<camera::Observation>> observations;
+  for (auto& cam_observations : observations_) {
+    cam_observations.second.clear();
+  }
 
   bool track_result;
   {
     TRACE_EVENT track_ev = profiler_domain_.trace_event("trackNextFrame");
     track_result =
         feature_tracker_->trackNextFrame(curr_sources, curr_images, prev_images, masks_sources,
-                                         predicted_world_from_rig, observations, frame_type, per_frame_setting);
+                                         predicted_world_from_rig, observations_, frame_type, per_frame_setting);
   }
   if (!track_result) {
     reset();
@@ -106,7 +116,7 @@ bool MultisensorOdometry::track(const Sources& curr_sources, const DepthSources&
   Tracks3DMap* tracks3d = stat ? &(stat->tracks3d) : nullptr;
   Isometry3T world_from_rig;
 
-  std::vector<CameraId> depth_cam_ids;
+  depth_cam_ids_.clear();
   {
     TRACE_EVENT depth_ev = profiler_domain_.trace_event("build_depth_pyramids");
     for (const auto& [cam_id, image] : curr_images) {
@@ -123,7 +133,7 @@ bool MultisensorOdometry::track(const Sources& curr_sources, const DepthSources&
 
         auto depth_pyramids = image->build_gpu_depth_pyramid(depthptr, stream.get_stream(), mask_source);
         if (depth_pyramids) {
-          depth_cam_ids.push_back(cam_id);
+          depth_cam_ids_.push_back(cam_id);
         }
       }
     }
@@ -134,18 +144,19 @@ bool MultisensorOdometry::track(const Sources& curr_sources, const DepthSources&
     CUDA_CHECK(cudaStreamSynchronize(stream.get_stream()));
   }
 
-  std::vector<pnp::RGBDInfo> depth_info_storage;
-  depth_info_storage.reserve(depth_cam_ids.size());
-  std::unordered_map<CameraId, const pnp::RGBDInfo*> depth_infos;
-  for (CameraId cam_id : depth_cam_ids) {
-    depth_info_storage.push_back({cam_id, curr_images.at(cam_id)->gpu_depth_pyramid()->get()});
-    depth_infos[cam_id] = &depth_info_storage.back();
+  depth_info_storage_.clear();
+  depth_info_storage_.reserve(depth_cam_ids_.size());
+  depth_infos_.clear();
+  depth_infos_.reserve(depth_cam_ids_.size());
+  for (CameraId cam_id : depth_cam_ids_) {
+    depth_info_storage_.push_back({cam_id, curr_images.at(cam_id)->gpu_depth_pyramid()->get()});
+    depth_infos_[cam_id] = &depth_info_storage_.back();
   }
 
   bool have_pose;
   {
     TRACE_EVENT solve_ev = profiler_domain_.trace_event("solveNextFrame");
-    have_pose = solver_.solveNextFrame(timestamp, frame_type, observations, depth_infos, world_from_rig,
+    have_pose = solver_.solveNextFrame(timestamp, frame_type, observations_, depth_infos_, world_from_rig,
                                        static_info_exp, tracks2d, tracks3d);
   }
 

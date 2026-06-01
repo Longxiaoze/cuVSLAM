@@ -51,6 +51,7 @@ private:
   std::unique_ptr<sof::IMonoSOF> feature_tracker_;
   std::unique_ptr<pipelines::SolverSfMMono> solver_;
   std::vector<camera::Observation> observations_;
+  Tracks3DMap tracks3d_;
   bool do_predict(PredictorRef predictor, int64_t timestamp, Isometry3T& sof_prediction);
 };
 

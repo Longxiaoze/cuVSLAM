@@ -50,7 +50,10 @@ Mat23 projection_jacobian(const Vector3T& point_3d) {
 }
 }  // namespace
 
-VisualICP::VisualICP(const camera::Rig& rig) : rig_(rig) { motion_prior_ = Matrix6T::Identity() * 5e-2; }
+VisualICP::VisualICP(const camera::Rig& rig) : rig_(rig) {
+  motion_prior_ = Matrix6T::Identity() * 5e-2;
+  obs_per_camera_.resize(rig_.num_cameras);
+}
 
 float VisualICP::reprojection_cost_and_hessian(Matrix6T& H, Vector6T& rhs, const Isometry3T& cam_from_world,
                                                const ICPSettings& settings) const {
@@ -108,33 +111,17 @@ float VisualICP::icp_hessian_and_cost(Matrix6T& H, Vector6T& rhs, const Isometry
   focal = {focal.x() / scale_x, focal.y() / scale_y};
   principal = {principal.x() / scale_x, principal.y() / scale_y};
 
-  struct ObsLandmarkPair {
-    std::reference_wrapper<const camera::Observation> observation;
-    std::reference_wrapper<const Vector3T> landmark;
-  };
-
-  std::vector<ObsLandmarkPair> tracks;
-  tracks.reserve(observations_.size());
-  {
-    for (size_t i = 0; i < observations_.size(); i++) {
-      tracks.push_back({observations_[i], landmark_for_observation_[i]});
-    }
-  }
-
-  // Convert observation+landmark pairs to GPU-compatible format
-  std::vector<cuvslam::cuda::GPUICPTools::ObsLmPair> gpu_tracks;
-  gpu_tracks.reserve(tracks.size());
-  for (const auto& pair : tracks) {
-    cuvslam::cuda::GPUICPTools::ObsLmPair gpu_pair;
-    gpu_pair.obs_xy = {pair.observation.get().xy.x(), pair.observation.get().xy.y()};
-    const Vector3T& lm = pair.landmark.get();
-    gpu_pair.lm_xyz = {lm.x(), lm.y(), lm.z()};
-    gpu_tracks.push_back(gpu_pair);
+  gpu_tracks_.clear();
+  gpu_tracks_.reserve(observations_.size());
+  for (size_t i = 0; i < observations_.size(); i++) {
+    const camera::Observation& obs = observations_[i].get();
+    const Vector3T& lm = landmark_for_observation_[i].get();
+    gpu_tracks_.push_back({{obs.xy.x(), obs.xy.y()}, {lm.x(), lm.y(), lm.z()}});
   }
 
   float cost;
   icp_tools_.match_and_reduce(cost, rhs, H, focal, principal, inputs[pyramid_level], cam_from_world,
-                              settings.huber_depth, gpu_tracks);
+                              settings.huber_depth, gpu_tracks_);
 
   // if (prev_delta_) {
   //   H += motion_prior_;
@@ -275,6 +262,7 @@ bool VisualICP::solve(Isometry3T& rig_from_world, Matrix6T& static_info_exp,
 
   if (depth_info) {
     curr_observations_.clear();
+    curr_observations_.reserve(observations.size());
     for (const auto& obs : observations) {
       if (obs.cam_id == depth_info->depth_id) {
         curr_observations_.push_back(obs);
@@ -291,18 +279,20 @@ bool VisualICP::solve(Isometry3T& rig_from_world, Matrix6T& static_info_exp,
   observations_.reserve(observations.size());
 
   {
-    std::vector<std::vector<obs_ref>> obs_per_camera;
-    obs_per_camera.resize(rig_.num_cameras);
+    obs_per_camera_.resize(rig_.num_cameras);
+    for (auto& obs_vec : obs_per_camera_) {
+      obs_vec.clear();
+    }
 
     for (const auto& obs : observations) {
       auto it = landmarks.find(obs.id);
       if (it == landmarks.end()) {
         continue;
       }
-      obs_per_camera[obs.cam_id].emplace_back(std::cref(obs));
+      obs_per_camera_[obs.cam_id].emplace_back(std::cref(obs));
     }
 
-    for (auto& obs_vec : obs_per_camera) {
+    for (auto& obs_vec : obs_per_camera_) {
       std::sort(obs_vec.begin(), obs_vec.end(),
                 [](const obs_ref& lhs, const obs_ref& rhs) { return lhs.get().id < rhs.get().id; });
 

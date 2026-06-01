@@ -69,6 +69,8 @@ private:
   MulticamTriangulator triangulator;
 
   pnp::VisualICP visual_icp_;
+  std::vector<camera::Observation> obs_vector_;
+  map::Map<TrackId, Vector3T> recent_landmarks_;
 
   void exportTracks(const std::vector<camera::Observation>& observations, std::vector<Track2D>& out_tracks2d,
                     Tracks3DMap& out_tracks3d, const Isometry3T& camera_from_world) const;

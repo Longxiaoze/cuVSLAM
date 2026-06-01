@@ -123,6 +123,9 @@ private:
   // added when this solver is converted to the ISFMSolver interface.
   StateMachineSettings sm_settings_;
 
+  std::vector<camera::Observation> obs_vector_;
+  map::Map<TrackId, Vector3T> recent_landmarks_;
+
   profiler::VioProfiler::DomainHelper profiler_domain_ = profiler::VioProfiler::DomainHelper("VIO");
   const uint32_t profiler_color_ = 0x00FF00;
 };

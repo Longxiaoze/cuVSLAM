@@ -26,11 +26,17 @@ namespace cuvslam::odom {
 RGBDOdometry::RGBDOdometry(const camera::Rig& rig, const camera::FrustumIntersectionGraph& fig,
                            const Settings& settings, bool use_gpu)
 
-    : fig_(fig),
+    : rig_(rig),
+      fig_(fig),
       settings_(settings),
       map_(20),
       feature_predictor_(std::make_shared<pipelines::FeaturePredictor>(map_, rig)),
       solver_(map_, rig, settings.sba_settings) {
+  observations_.reserve(rig.num_cameras);
+  for (CameraId cam_id = 0; cam_id < rig.num_cameras; ++cam_id) {
+    observations_.try_emplace(cam_id);
+  }
+
   sof::Implementation implementation = sof::Implementation::kCPU;
   if (use_gpu) {
 #ifdef USE_CUDA
@@ -69,11 +75,13 @@ bool RGBDOdometry::track(const Sources& curr_sources, const DepthSources& depth_
   }
 
   sof::FrameState frame_type;
-  std::unordered_map<CameraId, std::vector<camera::Observation>> observations;
+  for (auto& cam_observations : observations_) {
+    cam_observations.second.clear();
+  }
 
   const bool track_result =
       feature_tracker_->trackNextFrame(curr_sources, curr_images, prev_images, masks_sources, predicted_world_from_rig,
-                                       observations, frame_type, per_frame_setting);
+                                       observations_, frame_type, per_frame_setting);
   if (!track_result) {
     reset();
     delta = Isometry3T::Identity();
@@ -114,7 +122,7 @@ bool RGBDOdometry::track(const Sources& curr_sources, const DepthSources& depth_
 
   cudaStreamSynchronize(stream.get_stream());
 
-  pipelines::SFMInputs inputs{observations, nullptr};
+  pipelines::SFMInputs inputs{observations_, nullptr};
 
   bool have_pose;
   if (depth_icp) {

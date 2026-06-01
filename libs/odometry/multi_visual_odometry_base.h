@@ -64,6 +64,7 @@ private:
 
   std::unique_ptr<VOFrameStat> last_frame_stat_;
   std::unique_ptr<sof::IMultiSOF> feature_tracker_;
+  pipelines::MulticamObservations observations_;
 
   // profiler
   profiler::VioProfiler::DomainHelper profiler_domain_ = profiler::VioProfiler::DomainHelper("Multi VO");

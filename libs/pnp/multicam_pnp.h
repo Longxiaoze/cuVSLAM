@@ -18,6 +18,8 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
+#include <vector>
 
 #include "camera/observation.h"
 #include "camera/rig.h"
@@ -71,10 +73,16 @@ private:
 
   void build_hessian(const Isometry3T& rig_from_world, Matrix6T& H, Vector6T& rhs, const PNPSettings& settings) const;
 
+  void build_camera_from_world(const Isometry3T& rig_from_world) const;
+
+  using ObservationRef = std::reference_wrapper<const camera::Observation>;
+
   camera::Rig rig_;
 
   mutable std::vector<std::reference_wrapper<const Vector3T>> landmark_for_observation_;
   mutable std::vector<std::reference_wrapper<const camera::Observation>> observations_;
+  mutable std::vector<std::vector<ObservationRef>> obs_per_camera_;
+  mutable std::vector<Isometry3T> cam_from_w_;
   profiler::PnPProfiler::DomainHelper profiler_domain_ = profiler::PnPProfiler::DomainHelper("PNPSolver");
 };
 

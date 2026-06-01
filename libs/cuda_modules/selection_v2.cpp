@@ -17,6 +17,7 @@
 
 #include "cuda_modules/selection_v2.h"
 
+#include <array>
 #include <cassert>
 
 namespace cuvslam::cuda {
@@ -113,9 +114,9 @@ void GPUSelection::computeGFTTAndSelectFeatures(const GPUGradientPyramid &gradie
     GFTTSum += bins_array_[i + 2];
   }
 
-  std::vector<size_t> nFeaturesFromPrevFrame(NUM_BINS_X * NUM_BINS_Y, 0);
-  std::vector<size_t> nFeatures(NUM_BINS_X * NUM_BINS_Y, 0);
-  std::vector<size_t> nAdded(NUM_BINS_X * NUM_BINS_Y, 0);
+  std::array<size_t, NUM_BINS_X * NUM_BINS_Y> nFeaturesFromPrevFrame{};
+  std::array<size_t, NUM_BINS_X * NUM_BINS_Y> nFeatures{};
+  std::array<size_t, NUM_BINS_X * NUM_BINS_Y> nAdded{};
 
   for (const Vector2T &feat : AliveFeatures) {
     uint2 bin_coords = {

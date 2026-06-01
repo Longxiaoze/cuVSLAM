@@ -76,25 +76,31 @@ bool SolverSfMMulti::solveNextFrame(int64_t time_ns, const sof::FrameState& fram
   Isometry3T rig_from_w = prev_rig_from_world_;
   world_from_rig = rig_from_w.inverse();
 
-  // TODO: refactor the code to use std::vector<std::reference_wrapper>
-  std::vector<camera::Observation> obs_vector;
-  for (const auto& [cam_id, obs] : observations) {
-    std::copy(obs.begin(), obs.end(), std::back_inserter(obs_vector));
+  obs_vector_.clear();
+  size_t num_observations = 0;
+  for (const auto& cam_observations : observations) {
+    num_observations += cam_observations.second.size();
+  }
+  obs_vector_.reserve(num_observations);
+  for (const auto& cam_observations : observations) {
+    const auto& obs = cam_observations.second;
+    std::copy(obs.begin(), obs.end(), std::back_inserter(obs_vector_));
   }
 
   // log observations in orange color
-  RERUN(logObservations, obs_vector, rig_, "world/camera_0/images/observations", Color(255, 165, 0));
+  RERUN(logObservations, obs_vector_, rig_, "world/camera_0/images/observations", Color(255, 165, 0));
 
   bool result = true;
   if (map_.empty()) {
     static_info_exp.setZero();
+    recent_landmarks_.clear();
   } else {
-    std::unordered_map<TrackId, Vector3T> landmarks = map_.get_recent_landmarks();
+    map_.get_recent_landmarks(recent_landmarks_);
 
-    RERUN(logLandmarks3D, landmarks, "world/camera_0/images/sba_landmarks", Color(255, 255, 0), 0.01f);
+    RERUN(logLandmarks3D, recent_landmarks_, "world/camera_0/images/sba_landmarks", Color(255, 255, 0), 0.01f);
 
     Isometry3T pose = rig_from_w;  // try to optimize copy, use result if success only
-    if (pnp_.solve(pose, static_info_exp, obs_vector, landmarks, solver_settings.vo_pnp)) {
+    if (pnp_.solve(pose, static_info_exp, obs_vector_, recent_landmarks_, solver_settings.vo_pnp)) {
       world_from_rig = pose.inverse();
       rig_from_w = pose;
       prev_rig_from_world_ = rig_from_w;
@@ -108,25 +114,24 @@ bool SolverSfMMulti::solveNextFrame(int64_t time_ns, const sof::FrameState& fram
   prev_static_info_exp_ = static_info_exp;
 
   if (frameState == sof::FrameState::Key) {
-    auto tr_landmarks = triangulator.triangulate(world_from_rig, obs_vector);
+    auto tr_landmarks = triangulator.triangulate(world_from_rig, obs_vector_);
 
     // log landmarks in yellow color
     RERUN(logLandmarks, tr_landmarks, rig_from_w, *rig_.intrinsics[0], "world/camera_0/images/landmarks",
           Color(255, 255, 0));
 
     map_.add_keyframe(time_ns, {rig_from_w}, {},  // preintegration
-                      obs_vector, tr_landmarks);
+                      obs_vector_, tr_landmarks);
     if (sba_service_) {
       static_cast<SbaServiceBase*>(sba_service_.get())->trigger(solver_settings.sba);
     }
   } else {
-    std::unordered_map<TrackId, Vector3T> landmarks = map_.get_recent_landmarks();
-    RERUN(logLandmarks, landmarks, rig_from_w, *rig_.intrinsics[0], "world/camera_0/images/landmarks",
+    RERUN(logLandmarks, recent_landmarks_, rig_from_w, *rig_.intrinsics[0], "world/camera_0/images/landmarks",
           Color(255, 255, 0));
   }
 
   if (tracks2d && tracks3d) {
-    exportTracks(obs_vector, *tracks2d, *tracks3d, rig_from_w);
+    exportTracks(obs_vector_, *tracks2d, *tracks3d, rig_from_w);
   }
 
   return result;

@@ -16,7 +16,9 @@
 
 #pragma once
 
+#include <functional>
 #include <optional>
+#include <vector>
 
 #include <cunls/common/cublas_helper.h>
 #include <cunls/common/types.h>
@@ -157,6 +159,15 @@ private:
   mutable cuda::GPUArrayPinned<cunls::SE3Transform> d_imu_delta_{1};
   mutable cuda::GPUArrayPinned<cunls::SE3Transform> d_prev_pose_{1};
   mutable cuda::GPUArrayPinned<int> d_const_id_{1};
+
+  using ObservationRef = std::reference_wrapper<const camera::Observation>;
+  mutable std::vector<std::vector<ObservationRef>> obs_per_camera_;
+  mutable std::vector<camera::Observation> filtered_obs_;
+  mutable std::vector<Vector3T> matched_landmarks_;
+  mutable std::vector<float*> pose_state_ptrs_;
+  mutable std::vector<float*> icp_state_ptrs_;
+  mutable std::vector<std::vector<float*>> p2p_state_ptrs_;
+  mutable std::vector<float*> inertial_state_ptrs_;
 
   mutable cunls::LevenbergMarquardtMinimizer minimizer_;
 

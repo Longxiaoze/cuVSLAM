@@ -177,10 +177,10 @@ const TracksVector &MonoSOFGPU::finish(FrameState &state, const Settings &sof_se
   feature_selector_->set_image_width(curr_img_->get_image_meta().shape.width);
   if (feature_selector_->select(tracks_)) {
     state = FrameState::Key;
-    std::vector<Vector2T> new_tracks;
-    addFeatures(curr_img_, tracks_, new_tracks, sof_settings);
+    new_tracks_.clear();
+    addFeatures(curr_img_, tracks_, new_tracks_, sof_settings);
 
-    tracks_.add(cam_id_, new_tracks);
+    tracks_.add(cam_id_, new_tracks_);
 
     if (tracks_.get_num_alive() < FAILED_ACTIVE_TRACK_COUNT) {
       TraceError(
@@ -207,6 +207,7 @@ void MonoSOFGPU::reset() {
   tracks_.reset();
   last_keyframe_tracks_.reset();
   alive_tracks_.clear();
+  new_tracks_.clear();
 
   predictionTrackIds_.clear();
   predictedUVs_.clear();
@@ -221,6 +222,8 @@ void MonoSOFGPU::addFeatures(const ImageContextPtr &image, TracksVector &existin
   assert(num_alive_tracks <= static_cast<size_t>(sof_settings.num_desired_tracks) &&
          num_alive_tracks <= existing_tracks.size());
   const size_t nDesiredPointsToSelect = sof_settings.num_desired_tracks - num_alive_tracks;
+  new_tracks.clear();
+  new_tracks.reserve(nDesiredPointsToSelect);
 
   alive_tracks_.clear();
   alive_tracks_.reserve(num_alive_tracks);

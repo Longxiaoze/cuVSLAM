@@ -64,6 +64,7 @@ private:
   GoodFeaturesToTrackDetector detector_;
 
   ImageMatrix<size_t> tracksMap_;  // for collapse
+  std::vector<Vector2T> new_tracks_;
 
   void addFeatures(const ImageContextPtr& image, TracksVector& existing_tracks, std::vector<Vector2T>& new_tracks,
                    const Settings& sof_settings);

@@ -103,33 +103,46 @@ void UnifiedMap::add_keyframe(int64_t time_ns, const State& state, const IMUPrei
 }
 
 Map<TrackId, Vector3T> UnifiedMap::get_recent_landmarks() const {
+  Map<TrackId, Vector3T> out;
+  get_recent_landmarks(out);
+  return out;
+}
+
+void UnifiedMap::get_recent_landmarks(Map<TrackId, Vector3T>& out) const {
   TRACE_EVENT ev = profiler_domain_.trace_event("get_recent_landmarks");
   std::lock_guard<std::mutex> lock(map_mutex_);
+  out.clear();
   if (consecutive_keyframes_.empty()) {
-    return {};
+    return;
   }
 
-  Map<TrackId, Vector3T> out;
-  for (const auto& [track_id, lm_with_obs] : landmarks_from_keyframe_.at(consecutive_keyframes_.back().keyframe)) {
+  const auto& recent_landmarks = landmarks_from_keyframe_.at(consecutive_keyframes_.back().keyframe);
+  out.reserve(recent_landmarks.size());
+  for (const auto& [track_id, lm_with_obs] : recent_landmarks) {
     const std::optional<Vector3T>& point_3d = lm_with_obs.landmark->get_pose();
     if (point_3d) {
       out.insert({track_id, *point_3d});
     }
   }
-
-  return out;
 }
 
 TrackIdMap UnifiedMap::get_recent_landmarks(CameraId cam_id) const {
+  TrackIdMap out;
+  get_recent_landmarks(cam_id, out);
+  return out;
+}
+
+void UnifiedMap::get_recent_landmarks(CameraId cam_id, TrackIdMap& out) const {
   TRACE_EVENT ev = profiler_domain_.trace_event("get_recent_landmarks(cam_id)");
   std::lock_guard<std::mutex> lock(map_mutex_);
+  out.clear();
   if (consecutive_keyframes_.empty()) {
-    return {};
+    return;
   }
 
-  TrackIdMap out;
-  out.reserve(1e3);
-  for (const auto& [track_id, lm_with_obs] : landmarks_from_keyframe_.at(consecutive_keyframes_.back().keyframe)) {
+  const auto& recent_landmarks = landmarks_from_keyframe_.at(consecutive_keyframes_.back().keyframe);
+  out.reserve(recent_landmarks.size());
+  for (const auto& [track_id, lm_with_obs] : recent_landmarks) {
     const std::optional<Vector3T>& point_3d = lm_with_obs.landmark->get_pose();
     if (point_3d) {
       for (const auto& obs : lm_with_obs.observations) {
@@ -140,8 +153,6 @@ TrackIdMap UnifiedMap::get_recent_landmarks(CameraId cam_id) const {
       }
     }
   }
-
-  return out;
 }
 
 void UnifiedMap::remove_tail_keyframe_thread_unsafe() {

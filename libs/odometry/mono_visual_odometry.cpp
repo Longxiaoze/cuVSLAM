@@ -87,15 +87,14 @@ bool MonoVisualOdometry::track(const Sources& curr_sources, [[maybe_unused]] con
   IVisualOdometry::VOFrameStat* stat = last_frame_stat_.get();
   std::vector<Track2D>* tracks2d = stat ? &(stat->tracks2d) : nullptr;
 
-  Tracks3DMap tracks3d;  // relative to camera
   storage::Isometry3<float> world_from_rig;
   const ErrorCode err = solver_->monoSolveNextFrame(observations_, left_curr_image->get_image_meta().frame_id,
                                                     frame_type == sof::FrameState::Key, nullptr, world_from_rig,
-                                                    tracks2d, tracks3d, static_info_exp);
+                                                    tracks2d, tracks3d_, static_info_exp);
   if (stat) {
     stat->keyframe = frame_type == sof::FrameState::Key;
     stat->heating = !solver_->resectioningStarted();
-    stat->tracks3d = tracks3d;
+    stat->tracks3d = tracks3d_;
   }
 
   if (err != ErrorCode::S_True) {

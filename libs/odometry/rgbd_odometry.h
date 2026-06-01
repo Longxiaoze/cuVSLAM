@@ -59,6 +59,7 @@ private:
 
   std::unique_ptr<IVisualOdometry::VOFrameStat> last_frame_stat_;
   std::unique_ptr<sof::IMultiSOF> feature_tracker_;
+  pipelines::MulticamObservations observations_;
   cuda::Stream stream;
 
   // profiler

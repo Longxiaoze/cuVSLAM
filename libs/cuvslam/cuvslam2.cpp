@@ -387,6 +387,11 @@ public:
   // state
   FrameId frame_id{0};
   sof::Images prev_image_ptrs;
+  Sources image_sources;
+  Sources masks_sources;
+  DepthSources depth_sources;
+  Metas image_metas;
+  sof::Images curr_image_ptrs;
   Isometry3T prev_abs_pose{Isometry3T::Identity()};
   int64_t last_timestamp_ns{std::numeric_limits<int64_t>::min()};
   int64_t last_frame_timestamp_ns;
@@ -644,11 +649,22 @@ PoseEstimate Odometry::Track(const ImageSet& images, const ImageSet& masks, cons
   }
   DumpTrackCall(impl->debug_dump_directory, impl->frame_id, images, masks, depths);
 
-  Sources image_sources(images.size());
-  Sources masks_sources(images.size());
-  DepthSources depth_sources(depths.size());
-  Metas image_metas(images.size());
-  sof::Images cuvslam_images_ptrs;
+  Sources& image_sources = impl->image_sources;
+  Sources& masks_sources = impl->masks_sources;
+  DepthSources& depth_sources = impl->depth_sources;
+  Metas& image_metas = impl->image_metas;
+  sof::Images& cuvslam_images_ptrs = impl->curr_image_ptrs;
+
+  image_sources.clear();
+  masks_sources.clear();
+  depth_sources.clear();
+  image_metas.clear();
+  cuvslam_images_ptrs.clear();
+  image_sources.reserve(impl->rig.num_cameras);
+  masks_sources.reserve(impl->rig.num_cameras);
+  depth_sources.reserve(impl->rig.num_cameras);
+  image_metas.reserve(impl->rig.num_cameras);
+  cuvslam_images_ptrs.reserve(impl->rig.num_cameras);
   impl->image_contexts.clear();
 
   const FrameId frame_id = impl->frame_id++;

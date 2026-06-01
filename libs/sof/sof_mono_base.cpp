@@ -43,8 +43,8 @@ void MonoSOFBase::filterByPredictionError() {
   const size_t n = tracks_.size();
 
   // discrepancy between the prediction and the estimated position
-  std::vector<float> deltas;
-  deltas.reserve(n);
+  prediction_deltas_.clear();
+  prediction_deltas_.reserve(n);
 
   for (unsigned k = 0; k < n; ++k) {
     if (tracks_[k].dead()) {
@@ -57,21 +57,21 @@ void MonoSOFBase::filterByPredictionError() {
     }
     const Vector2T& predicted_uv = *predictedUVs_[k];
     const Vector2T delta = predicted_uv - tracks_[k].position();
-    deltas.push_back(delta.norm());
+    prediction_deltas_.push_back(delta.norm());
   }
 
-  if (deltas.size() >= 3U) {
-    // we are going to reorder deltas
-    auto originalDeltas = deltas;
-    std::nth_element(deltas.begin(), deltas.begin() + deltas.size() / 2, deltas.end());
+  if (prediction_deltas_.size() >= 3U) {
+    original_prediction_deltas_ = prediction_deltas_;
+    std::nth_element(prediction_deltas_.begin(), prediction_deltas_.begin() + prediction_deltas_.size() / 2,
+                     prediction_deltas_.end());
 
     // This threshold is somewhat arbitrary, but it gives
     // good results on KITTI.
     // More rigorous bound should probably include an estimate
     // of standard deviation.
-    const auto threshold = std::max(3.f, 2.f * deltas[deltas.size() / 2]);
+    const auto threshold = std::max(3.f, 2.f * prediction_deltas_[prediction_deltas_.size() / 2]);
 
-    auto d = originalDeltas.begin();
+    auto d = original_prediction_deltas_.begin();
     for (unsigned k = 0; k < n; ++k) {
       if (tracks_[k].dead()) {
         continue;

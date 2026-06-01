@@ -18,7 +18,9 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <optional>
+#include <vector>
 
 #include "camera/observation.h"
 #include "camera/rig.h"
@@ -98,6 +100,11 @@ private:
   mutable std::vector<std::reference_wrapper<const camera::Observation>> observations_;
 
   mutable std::vector<camera::Observation> curr_observations_;
+
+  using ObservationRef = std::reference_wrapper<const camera::Observation>;
+  mutable std::vector<std::vector<ObservationRef>> obs_per_camera_;
+  mutable std::vector<cuda::GPUICPTools::ObsLmPair> gpu_tracks_;
+  mutable std::vector<Vector3T> lifted_landmarks_;
 
   profiler::PnPProfiler::DomainHelper profiler_domain_ = profiler::PnPProfiler::DomainHelper("VisualICP");
 };

@@ -18,6 +18,8 @@
 #pragma once
 
 #include <optional>
+#include <unordered_map>
+#include <vector>
 
 #include "common/imu_measurement.h"
 #include "common/isometry.h"
@@ -71,6 +73,10 @@ private:
 
   std::unique_ptr<IVisualOdometry::VOFrameStat> last_frame_stat_;
   std::unique_ptr<sof::IMultiSOF> feature_tracker_;
+  pipelines::MulticamObservations observations_;
+  std::vector<CameraId> depth_cam_ids_;
+  std::vector<pnp::RGBDInfo> depth_info_storage_;
+  std::unordered_map<CameraId, const pnp::RGBDInfo*> depth_infos_;
   cuda::Stream stream;
 
   profiler::VioProfiler::DomainHelper profiler_domain_ = profiler::VioProfiler::DomainHelper("Multisensor VO");

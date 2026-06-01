@@ -26,10 +26,16 @@ namespace cuvslam::odom {
 MultiVisualOdometryBase::MultiVisualOdometryBase(const camera::Rig& rig, const camera::FrustumIntersectionGraph& fig,
                                                  const Settings& settings, bool use_gpu)
 
-    : fig_(fig),
+    : rig_(rig),
+      fig_(fig),
       settings_(settings),
       map_(20),
       feature_predictor_(std::make_shared<pipelines::FeaturePredictor>(map_, rig)) {
+  observations_.reserve(rig.num_cameras);
+  for (CameraId cam_id = 0; cam_id < rig.num_cameras; ++cam_id) {
+    observations_.try_emplace(cam_id);
+  }
+
   sof::Implementation implementation = sof::Implementation::kCPU;
   if (use_gpu) {
 #ifdef USE_CUDA
@@ -72,11 +78,13 @@ bool MultiVisualOdometryBase::track(const Sources& curr_sources, [[maybe_unused]
   }
 
   sof::FrameState frame_type;
-  std::unordered_map<CameraId, std::vector<camera::Observation>> observations;
+  for (auto& cam_observations : observations_) {
+    cam_observations.second.clear();
+  }
 
   const bool track_result =
       feature_tracker_->trackNextFrame(curr_sources, curr_images, prev_images, masks_sources, predicted_world_from_rig,
-                                       observations, frame_type, per_frame_setting);
+                                       observations_, frame_type, per_frame_setting);
   if (!track_result) {
     reset();
     delta = Isometry3T::Identity();
@@ -91,7 +99,7 @@ bool MultiVisualOdometryBase::track(const Sources& curr_sources, [[maybe_unused]
   Isometry3T world_from_rig;
 
   const bool have_pose =
-      solver.solveNextFrame(timestamp, frame_type, observations, world_from_rig, static_info_exp,
+      solver.solveNextFrame(timestamp, frame_type, observations_, world_from_rig, static_info_exp,
                             {per_frame_setting.sba, per_frame_setting.sm, per_frame_setting.vo_pnp,
                              per_frame_setting.inertial_stereo_pnp, per_frame_setting.imu_pnp, per_frame_setting.icp},
                             tracks2d, tracks3d);

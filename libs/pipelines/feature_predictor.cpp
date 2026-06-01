@@ -28,16 +28,16 @@ void FeaturePredictor::predictObservations(const Isometry3T& world_from_rig, int
 
   assert(uvs.size() == ids.size());
   assert(cameraIndex >= 0);
-  assert(cameraIndex <= rig_.num_cameras);
+  assert(cameraIndex < rig_.num_cameras);
 
   Isometry3T cameraFromWorld = rig_.camera_from_rig[cameraIndex] * world_from_rig.inverse();
   auto& cameraModel = rig_.intrinsics[cameraIndex];
-  auto map_landmarks = map_.get_recent_landmarks(cameraIndex);
+  map_.get_recent_landmarks(cameraIndex, map_landmarks_);
 
   for (size_t i = 0; i < n; ++i) {
     uvs[i].reset();
-    auto track = map_landmarks.find(ids[i]);
-    if (track == map_landmarks.end()) {
+    auto track = map_landmarks_.find(ids[i]);
+    if (track == map_landmarks_.end()) {
       continue;
     }
 

@@ -18,6 +18,7 @@
 #pragma once
 
 #include <optional>
+#include <vector>
 
 #include "common/camera_id.h"
 #include "common/image_matrix.h"
@@ -52,6 +53,8 @@ protected:
 
   std::vector<TrackId> predictionTrackIds_;
   Prediction predictedUVs_;
+  std::vector<float> prediction_deltas_;
+  std::vector<float> original_prediction_deltas_;
 
   bool input_mask_present_ = false;
   ImageMatrix<uint8_t> input_mask_;

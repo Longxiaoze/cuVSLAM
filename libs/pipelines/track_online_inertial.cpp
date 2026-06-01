@@ -401,8 +401,8 @@ bool runInertialPnP(const imu::ImuCalibration& calib, const InertialPnP& solver,
 
 // OUT: curr_pose - current pose if success otherwise curr_pose is unchanged
 bool runStereoPnP(pnp::PNPSolver& solver, const std::unordered_map<TrackId, Track>& tracks3d,
-                  const std::vector<camera::Observation>& observations, const Isometry3T& imu_from_rig,
-                  const pnp::PNPSettings& settings,
+                  const std::vector<camera::Observation>& observations, map::Map<TrackId, Vector3T>& landmarks,
+                  const Isometry3T& imu_from_rig, const pnp::PNPSettings& settings,
                   sba_imu::Pose& prev_pose,  // non-const because of velocities updates
                   sba_imu::Pose& curr_pose) {
   /* logic here:
@@ -411,7 +411,8 @@ bool runStereoPnP(pnp::PNPSolver& solver, const std::unordered_map<TrackId, Trac
    * prev_pose.w_from_imu * imu_from_rig = prev_rig_from_world_.inverse()
    * prev_rig_from_world_ = (prev_pose.w_from_imu * imu_from_rig).inverse()  */
 
-  std::unordered_map<TrackId, Vector3T> landmarks;
+  landmarks.clear();
+  landmarks.reserve(tracks3d.size());
   for (const auto& [track_id, track] : tracks3d) {
     if (track.hasLocation()) {
       landmarks.insert({track_id, track.getLocation3D()});
@@ -551,25 +552,29 @@ bool SolverSfMInertial::solveNextFrame(int64_t time_ns, const sof::FrameState& f
     return true;
   }
 
-  // TODO: refactor the code to use std::vector<std::reference_wrapper>
-  std::vector<camera::Observation> obs_vector;
-  for (const auto& [cam_id, obs] : observations) {
-    std::copy(obs.begin(), obs.end(), std::back_inserter(obs_vector));
+  obs_vector_.clear();
+  size_t num_observations = 0;
+  for (const auto& cam_observations : observations) {
+    num_observations += cam_observations.second.size();
+  }
+  obs_vector_.reserve(num_observations);
+  for (const auto& cam_observations : observations) {
+    const auto& obs = cam_observations.second;
+    std::copy(obs.begin(), obs.end(), std::back_inserter(obs_vector_));
   }
 
-  RERUN(logObservations, obs_vector, rig_, "world/camera_0/images/observations", Color(255, 165, 0));
+  RERUN(logObservations, obs_vector_, rig_, "world/camera_0/images/observations", Color(255, 165, 0));
 
   bool no_drops = check_imu_drops(prev_pose.preintegration, calib_, prev_pose_ts_ns, time_ns);
 
   if (!map_.empty()) {
-    std::unordered_map<TrackId, Track> landmarks;
-    {
-      auto map_landmarks = map_.get_recent_landmarks();
-      for (const auto& [track_id, point_3d] : map_landmarks) {
-        Track track;
-        track.setLocation3D(point_3d, TrackState::kTriangulated);
-        landmarks.insert({track_id, track});
-      }
+    map_.get_recent_landmarks(recent_landmarks_);
+    pnp_landmarks_.clear();
+    pnp_landmarks_.reserve(recent_landmarks_.size());
+    for (const auto& [track_id, point_3d] : recent_landmarks_) {
+      Track track;
+      track.setLocation3D(point_3d, TrackState::kTriangulated);
+      pnp_landmarks_.insert({track_id, track});
     }
 
     if (imu_state == StateMachine::State::Ok) {
@@ -577,11 +582,11 @@ bool SolverSfMInertial::solveNextFrame(int64_t time_ns, const sof::FrameState& f
       {
         auto t_prev = prev_pose.w_from_imu.translation();
         TraceMessage("[PRE-PnP] landmarks=%d obs=%d prev_t=[%.4f,%.4f,%.4f] vel=[%.3f,%.3f,%.3f]",
-                     (int)landmarks.size(), (int)obs_vector.size(), t_prev.x(), t_prev.y(), t_prev.z(),
+                     (int)pnp_landmarks_.size(), (int)obs_vector_.size(), t_prev.x(), t_prev.y(), t_prev.z(),
                      prev_pose.velocity.x(), prev_pose.velocity.y(), prev_pose.velocity.z());
       }
       TRACE_EVENT ev2 = profiler_domain_.trace_event("runInertialPnP");
-      pnp_result = runInertialPnP(calib_, inertial_pnp_, landmarks, obs_vector, rig_, *maybe_gravity,
+      pnp_result = runInertialPnP(calib_, inertial_pnp_, pnp_landmarks_, obs_vector_, rig_, *maybe_gravity,
                                   solver_settings.imu_pnp, prev_pose, curr_pose);
       TraceMessage("[INERTIAL PnP] result=%d gyro=[%.6f,%.6f,%.6f] acc=[%.6f,%.6f,%.6f] vel=[%.3f,%.3f,%.3f]",
                    (int)pnp_result, curr_pose.gyro_bias.x(), curr_pose.gyro_bias.y(), curr_pose.gyro_bias.z(),
@@ -590,8 +595,8 @@ bool SolverSfMInertial::solveNextFrame(int64_t time_ns, const sof::FrameState& f
     } else {
       {
         TRACE_EVENT ev2 = profiler_domain_.trace_event("runStereoPnP");
-        pnp_result = runStereoPnP(stereo_pnp_, landmarks, obs_vector, imu_from_rig, solver_settings.inertial_stereo_pnp,
-                                  prev_pose, curr_pose);
+        pnp_result = runStereoPnP(stereo_pnp_, pnp_landmarks_, obs_vector_, stereo_pnp_landmarks_, imu_from_rig,
+                                  solver_settings.inertial_stereo_pnp, prev_pose, curr_pose);
       }
       if (pnp_result) {
         curr_pose.gyro_bias = prev_pose.gyro_bias;
@@ -633,7 +638,7 @@ bool SolverSfMInertial::solveNextFrame(int64_t time_ns, const sof::FrameState& f
   TraceMessage(
       "Frame: pnp=%d integrated=%d imu_state=%d obs=%d vel=[%.3f,%.3f,%.3f] gbias=[%.4f,%.4f,%.4f] "
       "abias=[%.4f,%.4f,%.4f]",
-      pnp_result, integrated, (int)imu_state, (int)obs_vector.size(), prev_pose.velocity.x(), prev_pose.velocity.y(),
+      pnp_result, integrated, (int)imu_state, (int)obs_vector_.size(), prev_pose.velocity.x(), prev_pose.velocity.y(),
       prev_pose.velocity.z(), prev_pose.gyro_bias.x(), prev_pose.gyro_bias.y(), prev_pose.gyro_bias.z(),
       prev_pose.acc_bias.x(), prev_pose.acc_bias.y(), prev_pose.acc_bias.z());
   if (!map_.empty()) {
@@ -695,14 +700,14 @@ bool SolverSfMInertial::solveNextFrame(int64_t time_ns, const sof::FrameState& f
   }
 
   if (frameState == sof::FrameState::Key) {
-    auto tr_landmarks = triangulator.triangulate(world_from_rig, obs_vector);
+    auto tr_landmarks = triangulator.triangulate(world_from_rig, obs_vector_);
 
     State state = {rig_from_w, !lost ? prev_pose.velocity : last_valid_pose.velocity,
                    !lost ? prev_pose.acc_bias : last_valid_pose.acc_bias,
                    !lost ? prev_pose.gyro_bias : last_valid_pose.gyro_bias};
     map_.add_keyframe(time_ns, state,
                       last_kf_preint,  // preintegration
-                      obs_vector, tr_landmarks);
+                      obs_vector_, tr_landmarks);
     if (sba_service_) {
       static_cast<SbaServiceBase*>(sba_service_.get())->trigger(solver_settings.sba);
     }
@@ -714,7 +719,7 @@ bool SolverSfMInertial::solveNextFrame(int64_t time_ns, const sof::FrameState& f
   }
 
   if (tracks2d && tracks3d) {
-    exportTracks(obs_vector, *tracks2d, *tracks3d, rig_from_w);
+    exportTracks(obs_vector_, *tracks2d, *tracks3d, rig_from_w);
   }
 
   return !lost;

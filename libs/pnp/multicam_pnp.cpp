@@ -72,16 +72,23 @@ Mat23 projection_jacobian(const Vector3T& point_3d) {
 }
 }  // namespace
 
-PNPSolver::PNPSolver(const camera::Rig& rig) : rig_(rig) {}
+PNPSolver::PNPSolver(const camera::Rig& rig) : rig_(rig) {
+  obs_per_camera_.resize(rig_.num_cameras);
+  cam_from_w_.reserve(rig_.num_cameras);
+}
+
+void PNPSolver::build_camera_from_world(const Isometry3T& rig_from_world) const {
+  cam_from_w_.clear();
+  cam_from_w_.reserve(rig_.num_cameras);
+  for (int i = 0; i < rig_.num_cameras; i++) {
+    cam_from_w_.push_back(rig_.camera_from_rig[i] * rig_from_world);
+  }
+}
 
 float PNPSolver::evaluate_cost(const Isometry3T& rig_from_world, const PNPSettings& settings) const {
   float cost = 0;
 
-  std::vector<Isometry3T> cam_from_w;
-  cam_from_w.reserve(rig_.num_cameras);
-  for (int i = 0; i < rig_.num_cameras; i++) {
-    cam_from_w.push_back(rig_.camera_from_rig[i] * rig_from_world);
-  }
+  build_camera_from_world(rig_from_world);
 
   Vector3T point_cam;
 
@@ -90,7 +97,7 @@ float PNPSolver::evaluate_cost(const Isometry3T& rig_from_world, const PNPSettin
   for (size_t obs_id = 0; obs_id < observations_.size(); obs_id++) {
     const auto& obs = observations_[obs_id].get();
     const Vector3T& point_w = landmark_for_observation_[obs_id].get();
-    const Isometry3T& Tcam_from_w = cam_from_w[obs.cam_id];
+    const Isometry3T& Tcam_from_w = cam_from_w_[obs.cam_id];
 
     point_cam = Tcam_from_w * point_w;
 
@@ -116,11 +123,7 @@ void PNPSolver::build_hessian(const Isometry3T& rig_from_world, Matrix6T& H, Vec
   H.setZero();
   rhs.setZero();
 
-  std::vector<Isometry3T> cam_from_w;
-  cam_from_w.reserve(rig_.num_cameras);
-  for (int i = 0; i < rig_.num_cameras; i++) {
-    cam_from_w.push_back(rig_.camera_from_rig[i] * rig_from_world);
-  }
+  build_camera_from_world(rig_from_world);
 
   Vector3T point_cam;
   float count = 0;
@@ -128,7 +131,7 @@ void PNPSolver::build_hessian(const Isometry3T& rig_from_world, Matrix6T& H, Vec
   for (size_t obs_id = 0; obs_id < observations_.size(); obs_id++) {
     const auto& obs = observations_[obs_id].get();
     const Vector3T& point_w = landmark_for_observation_[obs_id].get();
-    const Isometry3T& Tcam_from_w = cam_from_w[obs.cam_id];
+    const Isometry3T& Tcam_from_w = cam_from_w_[obs.cam_id];
 
     point_cam = Tcam_from_w * point_w;
 
@@ -179,18 +182,20 @@ bool PNPSolver::solve(Isometry3T& rig_from_world, Matrix6T& static_info_exp,
   observations_.reserve(observations.size());
 
   {
-    std::vector<std::vector<obs_ref>> obs_per_camera;
-    obs_per_camera.resize(rig_.num_cameras);
+    obs_per_camera_.resize(rig_.num_cameras);
+    for (auto& obs_vec : obs_per_camera_) {
+      obs_vec.clear();
+    }
 
     for (const auto& obs : observations) {
       auto it = landmarks.find(obs.id);
       if (it == landmarks.end()) {
         continue;
       }
-      obs_per_camera[obs.cam_id].emplace_back(std::cref(obs));
+      obs_per_camera_[obs.cam_id].emplace_back(std::cref(obs));
     }
 
-    for (auto& obs_vec : obs_per_camera) {
+    for (auto& obs_vec : obs_per_camera_) {
       if (settings.filter_new_observations) {
         std::sort(obs_vec.begin(), obs_vec.end(),
                   [](const obs_ref& lhs, const obs_ref& rhs) { return lhs.get().id < rhs.get().id; });
@@ -289,14 +294,10 @@ bool PNPSolver::solve(Isometry3T& rig_from_world, Matrix6T& static_info_exp,
 
   if (status && settings.recalculate_cov) {
     static_info_exp.setZero();
-    std::vector<Isometry3T> cam_from_w;
-    cam_from_w.reserve(rig_.num_cameras);
-    for (int i = 0; i < rig_.num_cameras; i++) {
-      cam_from_w.push_back(rig_.camera_from_rig[i] * rig_from_world);
-    }
+    build_camera_from_world(rig_from_world);
 
     // log landmark_for_observation_ with final result in rerun visualizer
-    RERUN(logLandmarks, landmark_for_observation_, cam_from_w[0], *rig_.intrinsics[0],
+    RERUN(logLandmarks, landmark_for_observation_, cam_from_w_[0], *rig_.intrinsics[0],
           "world/camera_0/images/landmarks_pnp_final", Color(0, 255, 0));
 
     Vector3T point_cam;
@@ -304,7 +305,7 @@ bool PNPSolver::solve(Isometry3T& rig_from_world, Matrix6T& static_info_exp,
     for (size_t obs_id = 0; obs_id < observations_.size(); obs_id++) {
       const auto& obs = observations_[obs_id].get();
       const Vector3T& point_w = landmark_for_observation_[obs_id].get();
-      const Isometry3T& Tcam_from_w = cam_from_w[obs.cam_id];
+      const Isometry3T& Tcam_from_w = cam_from_w_[obs.cam_id];
 
       point_cam = Tcam_from_w * point_w;
 

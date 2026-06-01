@@ -66,9 +66,13 @@ Isometry3T IsometryFromSE3Transform(const cunls::SE3Transform& se3) {
 
 void FilterObservations(const std::vector<camera::Observation>& observations,
                         const std::unordered_map<TrackId, Vector3T>& landmarks, int num_cameras,
+                        std::vector<std::vector<std::reference_wrapper<const camera::Observation>>>& obs_per_camera,
                         std::vector<camera::Observation>& filtered_obs, std::vector<Vector3T>& matched_landmarks) {
   using obs_ref = std::reference_wrapper<const camera::Observation>;
-  std::vector<std::vector<obs_ref>> obs_per_camera(num_cameras);
+  obs_per_camera.resize(num_cameras);
+  for (auto& obs_vec : obs_per_camera) {
+    obs_vec.clear();
+  }
 
   for (const auto& obs : observations) {
     if (landmarks.count(obs.id)) {
@@ -77,7 +81,9 @@ void FilterObservations(const std::vector<camera::Observation>& observations,
   }
 
   filtered_obs.clear();
+  filtered_obs.reserve(observations.size());
   matched_landmarks.clear();
+  matched_landmarks.reserve(observations.size());
 
   for (auto& obs_vec : obs_per_camera) {
     std::sort(obs_vec.begin(), obs_vec.end(),
@@ -150,14 +156,12 @@ bool MultisensorPoseEstimator::solve(Isometry3T& rig_from_world, Matrix6T& stati
                                      InertialPosteriorOutput* imu_out) const {
   TRACE_EVENT ev = profiler_domain_.trace_event("solve");
 
-  std::vector<camera::Observation> filtered_obs;
-  std::vector<Vector3T> matched_landmarks;
   {
     TRACE_EVENT filter_ev = profiler_domain_.trace_event("filter");
-    FilterObservations(observations, landmarks, rig_.num_cameras, filtered_obs, matched_landmarks);
+    FilterObservations(observations, landmarks, rig_.num_cameras, obs_per_camera_, filtered_obs_, matched_landmarks_);
   }
 
-  const size_t n = filtered_obs.size();
+  const size_t n = filtered_obs_.size();
 
   if (n < settings_.min_observations && depth_infos.empty() && !imu_in.has_value()) {
     static_info_exp.setZero();
@@ -169,8 +173,8 @@ bool MultisensorPoseEstimator::solve(Isometry3T& rig_from_world, Matrix6T& stati
   if (n >= settings_.min_observations) {
     TRACE_EVENT fill_ev = profiler_domain_.trace_event("fill");
     for (size_t i = 0; i < n; i++) {
-      const auto& obs = filtered_obs[i];
-      const auto& lm = matched_landmarks[i];
+      const auto& obs = filtered_obs_[i];
+      const auto& lm = matched_landmarks_[i];
       gpu_observation_xy_[i] = {obs.xy.x(), obs.xy.y()};
       d_lm_world_[i] = {lm.x(), lm.y(), lm.z()};
       IsometryToSE3Transform(rig_.camera_from_rig[obs.cam_id], d_cam_from_rig_[i]);
@@ -197,7 +201,7 @@ bool MultisensorPoseEstimator::solve(Isometry3T& rig_from_world, Matrix6T& stati
 
   std::optional<PnPFactor> pnp_cost;
   std::optional<ScaledCauchy> loss_reproj;
-  std::vector<float*> pose_state_ptrs;
+  pose_state_ptrs_.clear();
 
   cunls::Problem problem;
 
@@ -211,8 +215,8 @@ bool MultisensorPoseEstimator::solve(Isometry3T& rig_from_world, Matrix6T& stati
     // Per-residual normalization: scale = weight / num_residuals, so the total loss
     // contribution is independent of the observation count.
     loss_reproj.emplace(fw.reprojection / static_cast<float>(n), 1, fw.robust_reprojection);
-    pose_state_ptrs.assign(n, se3_states.StateBlockDevicePtr(0));
-    problem.AddFactorBatch(&*pnp_cost, &*loss_reproj, pose_state_ptrs);
+    pose_state_ptrs_.assign(n, se3_states.StateBlockDevicePtr(0));
+    problem.AddFactorBatch(&*pnp_cost, &*loss_reproj, pose_state_ptrs_);
   }
 
   problem.AddStateBatch(&se3_states);
@@ -232,7 +236,7 @@ bool MultisensorPoseEstimator::solve(Isometry3T& rig_from_world, Matrix6T& stati
   const size_t num_dp = std::min(depth_points.size(), kMaxDepthPoints);
   std::vector<std::optional<math::PointToPointICPBatch>> icp_costs(num_depth);
   std::optional<ScaledCauchy> loss_icp_scaled;
-  std::vector<float*> icp_state_ptrs;
+  icp_state_ptrs_.clear();
 
   if (!depth_infos.empty() && num_dp > 0) {
     TRACE_EVENT icp_ev = profiler_domain_.trace_event("icp");
@@ -244,7 +248,7 @@ bool MultisensorPoseEstimator::solve(Isometry3T& rig_from_world, Matrix6T& stati
 
     const float icp_scale = fw.point_to_point / static_cast<float>(num_dp);
     loss_icp_scaled.emplace(icp_scale, 1, fw.robust_point_to_point);
-    icp_state_ptrs.assign(num_dp, se3_states.StateBlockDevicePtr(0));
+    icp_state_ptrs_.assign(num_dp, se3_states.StateBlockDevicePtr(0));
 
     size_t idx = 0;
     for (const auto& [cam_id, depth_info] : depth_infos) {
@@ -253,7 +257,7 @@ bool MultisensorPoseEstimator::solve(Isometry3T& rig_from_world, Matrix6T& stati
       const float* d_cfr_ptr = reinterpret_cast<const float*>(d_depth_cam_from_rig_.ptr()) + idx * 16;
       icp_costs[idx].emplace(reinterpret_cast<const float3*>(d_depth_points_.ptr()), d_cfr_ptr, cp.depth_tex, cp.focal,
                              cp.principal, cp.img_size, num_dp);
-      problem.AddFactorBatch(&*icp_costs[idx], &*loss_icp_scaled, icp_state_ptrs);
+      problem.AddFactorBatch(&*icp_costs[idx], &*loss_icp_scaled, icp_state_ptrs_);
 
       ++idx;
     }
@@ -263,7 +267,8 @@ bool MultisensorPoseEstimator::solve(Isometry3T& rig_from_world, Matrix6T& stati
   const size_t num_gpu_planes = std::min(planes.size(), kMaxPlanes);
   std::vector<std::optional<math::PointToPlaneCostFunctionBatch>> p2p_costs(num_depth);
   std::vector<std::optional<ScaledCauchy>> loss_p2p(num_depth);
-  std::vector<std::vector<float*>> p2p_state_ptrs(num_depth);
+  p2p_state_ptrs_.clear();
+  p2p_state_ptrs_.resize(num_depth);
 
   if (!planes.empty() && !depth_infos.empty()) {
     TRACE_EVENT p2p_ev = profiler_domain_.trace_event("point_to_plane");
@@ -298,8 +303,8 @@ bool MultisensorPoseEstimator::solve(Isometry3T& rig_from_world, Matrix6T& stati
       for (const auto& [cam_id, depth_info] : depth_infos) {
         const size_t nf = p2p_costs[cam_idx]->NumFactors();
         loss_p2p[cam_idx].emplace(p2p_scale, 1, fw.robust_point_to_plane);
-        p2p_state_ptrs[cam_idx].assign(nf, se3_states.StateBlockDevicePtr(0));
-        problem.AddFactorBatch(&*p2p_costs[cam_idx], &*loss_p2p[cam_idx], p2p_state_ptrs[cam_idx]);
+        p2p_state_ptrs_[cam_idx].assign(nf, se3_states.StateBlockDevicePtr(0));
+        problem.AddFactorBatch(&*p2p_costs[cam_idx], &*loss_p2p[cam_idx], p2p_state_ptrs_[cam_idx]);
         ++cam_idx;
       }
     }
@@ -351,11 +356,10 @@ bool MultisensorPoseEstimator::solve(Isometry3T& rig_from_world, Matrix6T& stati
       inertial_cost = std::make_unique<cunls::SE3BetweenFactorBatch>(d_imu_delta_.ptr(), 1);
       // 6 = SE3 DOF, normalising the weight per-residual to match the other factor scaling.
       inertial_loss.emplace(fw.inertial / 6.0f, 1, fw.robust_inertial);
-      std::vector<float*> inertial_state_ptrs = {
-          prev_pose_state->StateBlockDevicePtr(0),
-          se3_states.StateBlockDevicePtr(0),
-      };
-      problem.AddFactorBatch(inertial_cost.get(), &*inertial_loss, inertial_state_ptrs);
+      inertial_state_ptrs_.clear();
+      inertial_state_ptrs_.push_back(prev_pose_state->StateBlockDevicePtr(0));
+      inertial_state_ptrs_.push_back(se3_states.StateBlockDevicePtr(0));
+      problem.AddFactorBatch(inertial_cost.get(), &*inertial_loss, inertial_state_ptrs_);
     }
   }
 

@@ -72,30 +72,35 @@ bool SolverSfMRGBD::solveNextFrame(int64_t time_ns, const sof::FrameState& frame
                                    Tracks3DMap* tracks3d) {
   TRACE_EVENT ev = profiler_domain_.trace_event("SolverSfMRGBD::solveNextFrame()", profiler_color_);
 
-  // TODO: refactor the code to use std::vector<std::reference_wrapper>
-  std::vector<camera::Observation> obs_vector;
-  for (const auto& [cam_id, obs] : inputs.observations) {
-    std::copy(obs.begin(), obs.end(), std::back_inserter(obs_vector));
+  obs_vector_.clear();
+  size_t num_observations = 0;
+  for (const auto& cam_observations : inputs.observations) {
+    num_observations += cam_observations.second.size();
+  }
+  obs_vector_.reserve(num_observations);
+  for (const auto& cam_observations : inputs.observations) {
+    const auto& obs = cam_observations.second;
+    std::copy(obs.begin(), obs.end(), std::back_inserter(obs_vector_));
   }
 
-  RERUN(logObservations, obs_vector, rig_, "world/camera_0/images/observations", Color(255, 165, 0));
+  RERUN(logObservations, obs_vector_, rig_, "world/camera_0/images/observations", Color(255, 165, 0));
 
   bool result = true;
 
   if (map_.empty()) {
     static_info_exp.setZero();
   } else {
-    std::unordered_map<TrackId, Vector3T> landmarks = map_.get_recent_landmarks();
-    RERUN(logLandmarks3D, landmarks, "world/camera_0/images/sba_landmarks", Color(255, 255, 0), 0.01f);
-    RERUN(logLandmarks, landmarks, prev_rig_from_world_, *rig_.intrinsics[0], "world/camera_0/images/landmarks",
+    map_.get_recent_landmarks(recent_landmarks_);
+    RERUN(logLandmarks3D, recent_landmarks_, "world/camera_0/images/sba_landmarks", Color(255, 255, 0), 0.01f);
+    RERUN(logLandmarks, recent_landmarks_, prev_rig_from_world_, *rig_.intrinsics[0], "world/camera_0/images/landmarks",
           Color(255, 255, 0));
 
     Isometry3T rig_from_world = prev_rig_from_world_;  // try to optimize copy, use result if success only
 
-    bool res = visual_icp_.solve(rig_from_world, static_info_exp, obs_vector, landmarks, solver_settings.icp,
+    bool res = visual_icp_.solve(rig_from_world, static_info_exp, obs_vector_, recent_landmarks_, solver_settings.icp,
                                  inputs.depth_info);
 
-    RERUN(logLandmarks, landmarks, rig_from_world, *rig_.intrinsics[0], "world/camera_0/images/landmarks",
+    RERUN(logLandmarks, recent_landmarks_, rig_from_world, *rig_.intrinsics[0], "world/camera_0/images/landmarks",
           Color(255, 255, 0));
 
     RERUN(logTrajectory, rig_from_world, "world/trajectories/vo_trajectory", Color(0, 255, 0), TrajectoryType::VO);
@@ -112,24 +117,24 @@ bool SolverSfMRGBD::solveNextFrame(int64_t time_ns, const sof::FrameState& frame
   world_from_rig = prev_rig_from_world_.inverse();
 
   if (frameState == sof::FrameState::Key) {
-    auto tr_landmarks = triangulator.triangulate(world_from_rig, obs_vector);
+    auto tr_landmarks = triangulator.triangulate(world_from_rig, obs_vector_);
 
     if (inputs.depth_info) {
       std::vector<cuvslam::pipelines::Landmark> mono_landmarks;
-      visual_icp_.lift_mono_tracks(*inputs.depth_info, world_from_rig, obs_vector, mono_landmarks);
+      visual_icp_.lift_mono_tracks(*inputs.depth_info, world_from_rig, obs_vector_, mono_landmarks);
 
       std::move(mono_landmarks.begin(), mono_landmarks.end(), std::back_inserter(tr_landmarks));
     }
 
     map_.add_keyframe(time_ns, {prev_rig_from_world_}, {},  // preintegration
-                      obs_vector, tr_landmarks);
+                      obs_vector_, tr_landmarks);
     if (sba_service_) {
       static_cast<SbaServiceBase*>(sba_service_.get())->trigger(solver_settings.sba);
     }
   }
 
   if (tracks2d && tracks3d) {
-    exportTracks(obs_vector, *tracks2d, *tracks3d, prev_rig_from_world_);
+    exportTracks(obs_vector_, *tracks2d, *tracks3d, prev_rig_from_world_);
   }
 
   return result;

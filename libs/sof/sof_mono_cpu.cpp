@@ -92,10 +92,10 @@ void MonoSOFCPU::track(const ImageAndSource &curr_image, const ImageContextPtr &
   feature_selector_->set_image_width(w);
   if (feature_selector_->select(tracks_)) {
     last_frame_state_ = FrameState::Key;
-    std::vector<Vector2T> new_tracks;
-    addFeatures(curr_image.image, tracks_, new_tracks, sof_settings);
+    new_tracks_.clear();
+    addFeatures(curr_image.image, tracks_, new_tracks_, sof_settings);
 
-    tracks_.add(cam_id_, new_tracks);
+    tracks_.add(cam_id_, new_tracks_);
 
     if (tracks_.get_num_alive() < FAILED_ACTIVE_TRACK_COUNT) {
       TraceError(
@@ -125,6 +125,8 @@ void MonoSOFCPU::addFeatures(const ImageContextPtr &image, TracksVector &existin
   assert(num_alive_tracks <= static_cast<uint32_t>(sof_settings.num_desired_tracks) &&
          num_alive_tracks <= existing_tracks.size());
   const size_t nDesiredPointsToSelect = sof_settings.num_desired_tracks - num_alive_tracks;
+  new_tracks.clear();
+  new_tracks.reserve(nDesiredPointsToSelect);
 
   detector_.computeGFTTAndSelectFeatures(image->cpu_gradient_pyramid(), sof_settings.border_top,
                                          sof_settings.border_bottom, sof_settings.border_left,
@@ -292,6 +294,7 @@ void MonoSOFCPU::ransacFilter(const camera::ICameraModel &intrinsics, const Trac
 void MonoSOFCPU::reset() {
   tracks_.reset();
   last_keyframe_tracks_.reset();
+  new_tracks_.clear();
 
   predictionTrackIds_.clear();
   predictedUVs_.clear();

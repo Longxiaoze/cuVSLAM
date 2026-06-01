@@ -17,6 +17,8 @@
 
 #include "pipelines/track_online_multisensor.h"
 
+#include <algorithm>
+
 #include "camera/observation.h"
 #include "camera/rig.h"
 #include "common/frame_id.h"
@@ -36,14 +38,17 @@ namespace cuvslam::pipelines {
 
 namespace {
 
-std::vector<camera::Observation> flatten_observations(const MulticamObservations& multicam_obs) {
-  std::vector<camera::Observation> obs_vector;
-  for (const auto& [cam_id, observations] : multicam_obs) {
-    for (const auto& obs : observations) {
-      obs_vector.push_back(obs);
-    }
+void flatten_observations(const MulticamObservations& multicam_obs, std::vector<camera::Observation>& obs_vector) {
+  obs_vector.clear();
+  size_t num_observations = 0;
+  for (const auto& cam_observations : multicam_obs) {
+    num_observations += cam_observations.second.size();
   }
-  return obs_vector;
+  obs_vector.reserve(num_observations);
+  for (const auto& cam_observations : multicam_obs) {
+    const auto& observations = cam_observations.second;
+    std::copy(observations.begin(), observations.end(), std::back_inserter(obs_vector));
+  }
 }
 
 void warn_if_non_pinhole(const camera::Rig& rig) {
@@ -138,23 +143,19 @@ bool SolverSfMMultisensor::solveNextFrameVisualOnly(
     Matrix6T& static_info_exp, std::vector<Track2D>* tracks2d, Tracks3DMap* tracks3d) {
   TRACE_EVENT ev = profiler_domain_.trace_event("SolverSfMMultisensor::solveNextFrame()", profiler_color_);
 
-  auto obs_vector = flatten_observations(observations);
+  flatten_observations(observations, obs_vector_);
   bool result = true;
 
   if (map_.empty()) {
     static_info_exp.setZero();
   } else {
-    std::unordered_map<TrackId, Vector3T> landmarks;
-    {
-      TRACE_EVENT lm_ev = profiler_domain_.trace_event("get_recent_landmarks");
-      landmarks = map_.get_recent_landmarks();
-    }
+    map_.get_recent_landmarks(recent_landmarks_);
 
     Isometry3T rig_from_world = prev_rig_from_world_;
     bool res;
     {
       TRACE_EVENT pnp_ev = profiler_domain_.trace_event("pose_estimator.solve");
-      res = pose_estimator_.solve(rig_from_world, static_info_exp, obs_vector, landmarks, depth_infos,
+      res = pose_estimator_.solve(rig_from_world, static_info_exp, obs_vector_, recent_landmarks_, depth_infos,
                                   depth_maps_.planes(), depth_maps_.depth_points());
     }
 
@@ -181,12 +182,12 @@ bool SolverSfMMultisensor::solveNextFrameVisualOnly(
 
   if (frameState == sof::FrameState::Key) {
     map::State state{prev_rig_from_world_};
-    process_keyframe(time_ns, world_from_rig, obs_vector, depth_infos, state, sba_imu::IMUPreintegration{});
+    process_keyframe(time_ns, world_from_rig, obs_vector_, depth_infos, state, sba_imu::IMUPreintegration{});
   }
 
   if (tracks2d && tracks3d) {
     TRACE_EVENT export_ev = profiler_domain_.trace_event("exportTracks");
-    exportTracks(obs_vector, *tracks2d, *tracks3d, prev_rig_from_world_);
+    exportTracks(obs_vector_, *tracks2d, *tracks3d, prev_rig_from_world_);
   }
 
   return result;
@@ -199,24 +200,20 @@ bool SolverSfMMultisensor::solveNextFrameInertial(int64_t time_ns, const sof::Fr
                                                   std::vector<Track2D>* tracks2d, Tracks3DMap* tracks3d) {
   TRACE_EVENT ev = profiler_domain_.trace_event("SolverSfMMultisensor::solveNextFrame(inertial)", profiler_color_);
 
-  auto obs_vector = flatten_observations(observations);
-  RERUN(logObservations, obs_vector, rig_, "world/camera_0/images/observations", Color(255, 165, 0));
+  flatten_observations(observations, obs_vector_);
+  RERUN(logObservations, obs_vector_, rig_, "world/camera_0/images/observations", Color(255, 165, 0));
 
   auto prep = imu_->prepare_frame(time_ns);
 
   bool pnp_result = false;
   if (!map_.empty()) {
-    std::unordered_map<TrackId, Vector3T> landmarks;
-    {
-      TRACE_EVENT lm_ev = profiler_domain_.trace_event("get_recent_landmarks");
-      landmarks = map_.get_recent_landmarks();
-    }
+    map_.get_recent_landmarks(recent_landmarks_);
 
     if (prep.imu_state == StateMachine::State::Ok) {
-      pnp_result = imu_->solve_inertial(landmarks, obs_vector, depth_infos, depth_maps_.planes(),
+      pnp_result = imu_->solve_inertial(recent_landmarks_, obs_vector_, depth_infos, depth_maps_.planes(),
                                         depth_maps_.depth_points(), time_ns);
     } else {
-      pnp_result = imu_->solve_visual(landmarks, obs_vector, depth_infos, depth_maps_.planes(),
+      pnp_result = imu_->solve_visual(recent_landmarks_, obs_vector_, depth_infos, depth_maps_.planes(),
                                       depth_maps_.depth_points(), time_ns);
     }
   }
@@ -256,13 +253,13 @@ bool SolverSfMMultisensor::solveNextFrameInertial(int64_t time_ns, const sof::Fr
 
   if (frameState == sof::FrameState::Key) {
     map::State state = imu_->build_keyframe_state(prev_rig_from_world_, frame.lost);
-    process_keyframe(time_ns, world_from_rig, obs_vector, depth_infos, state, imu_->last_kf_preint());
+    process_keyframe(time_ns, world_from_rig, obs_vector_, depth_infos, state, imu_->last_kf_preint());
     imu_->on_keyframe_committed(frame.lost);
   }
 
   if (tracks2d && tracks3d) {
     TRACE_EVENT export_ev = profiler_domain_.trace_event("exportTracks");
-    exportTracks(obs_vector, *tracks2d, *tracks3d, prev_rig_from_world_);
+    exportTracks(obs_vector_, *tracks2d, *tracks3d, prev_rig_from_world_);
   }
 
   return true;

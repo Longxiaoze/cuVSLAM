@@ -63,6 +63,7 @@ private:
 
   TracksVector last_keyframe_tracks_;  // last keyframe tracks
   std::vector<Vector2T> alive_tracks_;
+  std::vector<Vector2T> new_tracks_;
 
   // external algorithms
   GPUSelection detector_;
