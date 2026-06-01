@@ -57,8 +57,7 @@ bool ImageCast::cast(void* data, const ImageEncoding& encoding, const ImageShape
       gpu_array_rgb = std::make_unique<GPUOnlyArray<uint8_t>>(rgb_elements);
     }
 
-    CUDA_CHECK(
-        cudaMemcpyAsync((void*)gpu_array_rgb->ptr(), (void*)data, rgb_elements, cudaMemcpyHostToDevice, s));
+    CUDA_CHECK(cudaMemcpyAsync((void*)gpu_array_rgb->ptr(), (void*)data, rgb_elements, cudaMemcpyHostToDevice, s));
     uint2 size = {(unsigned)image_shape.width, (unsigned)image_shape.height};
     error = cast_image_rgb(gpu_array_rgb->ptr(), size.x * 3, gpu_image.ptr(), gpu_image.pitch(), size, s);
   }

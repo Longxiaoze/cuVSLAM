@@ -22,8 +22,8 @@
 #include <limits>
 #include <new>
 #include <sstream>
-#include <string>
 #include <stdexcept>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -277,8 +277,8 @@ public:
     // describing less memory than the image copy will later address.
     const size_t row_size = CheckedBytes<T>(cols_);
     CUDA_CHECK(cudaMallocPitch((void**)&data_, &pitch_, row_size, rows_));
-    CUDA_CHECK(cudaMemcpy2D((void*)data_, pitch_, (void*)image.data(), row_size, row_size, rows_,
-                            cudaMemcpyHostToDevice));
+    CUDA_CHECK(
+        cudaMemcpy2D((void*)data_, pitch_, (void*)image.data(), row_size, row_size, rows_, cudaMemcpyHostToDevice));
     prepare_texture();
   }
 
@@ -289,8 +289,8 @@ public:
 
     const size_t row_size = CheckedBytes<T>(cols_);
     CUDA_CHECK(cudaMallocPitch(&data_, &pitch_, row_size, rows_));
-    CUDA_CHECK(cudaMemcpy2D((void*)data_, pitch_, (void*)image.data_, pitch_, row_size, rows_,
-                            cudaMemcpyDeviceToDevice));
+    CUDA_CHECK(
+        cudaMemcpy2D((void*)data_, pitch_, (void*)image.data_, pitch_, row_size, rows_, cudaMemcpyDeviceToDevice));
     prepare_texture();
   }
 
