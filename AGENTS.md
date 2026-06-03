@@ -197,3 +197,20 @@ Install into Claude Code:
 cp -r cuvslam-skills/cuvslam-onboard ~/.claude/skills/
 cp -r cuvslam-skills/cuvslam-troubleshoot ~/.claude/skills/
 ```
+
+## AGENTS.md Convention
+
+> **Note: the rules in this section are for Claude Code only and are ignored by Codex.**
+
+### Codex-only constructs Claude Code does not support
+
+| Pattern | Why it's Codex-only |
+|---|---|
+| `<SYSTEM>…</SYSTEM>` blocks | Codex injects this as a system prompt; Claude reads it as plain text |
+| `<CONTEXT>…</CONTEXT>` blocks | Same — Codex-specific XML framing |
+| `approval_policy:` key | Codex sandbox approval setting; no equivalent in Claude Code |
+| `sandboxed: true/false` | Codex sandbox flag; ignored by Claude Code |
+| `tools:` YAML list at top level | Codex tool-allowlist format; Claude Code uses `settings.json` instead |
+| References to `codex run` / `codex search` CLI | Codex CLI commands; not available in Claude Code |
+| OpenAI model names (`gpt-4o`, `o1`, `o3`, `o4-mini`, …) | Model pinning for Codex; use Claude model names here instead |
+| `CODEX_*` environment variables | Codex runtime variables; not set by Claude Code |
