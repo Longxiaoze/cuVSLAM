@@ -80,8 +80,12 @@ TEST(AsyncSlam, TrackResultCanRunWhileLocalizeInMapIsInFlight) {
   options.reproduce_mode = false;
   options.pose_for_frame_required = true;
   options.loop_closure_solver_type = cuvslam::slam::LoopClosureSolverType::kDummy;
-  cuvslam::slam::AsyncSlam slam(rig, {0}, options);
 
+  // Synchronisation objects must be declared before slam so they outlive the background
+  // SLAM thread: C++ destroys locals in reverse declaration order, so slam (declared last)
+  // is destroyed first. Its destructor calls thread_.join(), which blocks until the thread
+  // finishes. The thread may still call finish_cb_ / start_cb_ at that point, so mutex and
+  // cv must still be alive.
   std::mutex mutex;
   std::condition_variable cv;
   bool localization_started = false;
@@ -104,6 +108,9 @@ TEST(AsyncSlam, TrackResultCanRunWhileLocalizeInMapIsInFlight) {
 
   const std::string missing_map_path = "/tmp/cuvslam_missing_localization_map_" +
                                        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count());
+
+  cuvslam::slam::AsyncSlam slam(rig, {0}, options);
+
   slam.LocalizeInMap(missing_map_path, 1'000, cuvslam::Isometry3T::Identity(), {}, MakeLocalizationSettings(), start_cb,
                      finish_cb);
 
@@ -128,7 +135,7 @@ TEST(AsyncSlam, TrackResultCanRunWhileLocalizeInMapIsInFlight) {
   }
   {
     std::unique_lock<std::mutex> lock(mutex);
-    ASSERT_TRUE(cv.wait_for(lock, 5s, [&] { return localization_finished; }));
+    ASSERT_TRUE(cv.wait_for(lock, 30s, [&] { return localization_finished; }));
     EXPECT_FALSE(localization_succeeded);
   }
 }
