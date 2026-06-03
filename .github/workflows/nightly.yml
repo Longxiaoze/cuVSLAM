@@ -1,0 +1,230 @@
+name: Nightly Build & Test
+
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  workflow_dispatch:
+    inputs:
+      force_build:
+        type: boolean
+        default: false
+        description: 'Force build even without recent changes'
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  check-changes:
+    name: Check for recent changes
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.decide.outputs.should_build }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Detect commits in the last 24 hours
+        id: decide
+        run: |
+          COMMIT_COUNT=$(git log --since="24 hours ago" --oneline | wc -l)
+          FORCE="${{ github.event.inputs.force_build }}"
+          if [ "${COMMIT_COUNT}" -gt 0 ] || [ "${FORCE}" = "true" ]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            echo "Building: ${COMMIT_COUNT} commit(s) in last 24h, force=${FORCE}"
+          else
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping: no commits in last 24h and force=${FORCE}"
+          fi
+
+  build-and-test:
+    name: "${{ matrix.name }}"
+    needs: check-changes
+    if: needs.check-changes.outputs.should_build == 'true'
+    runs-on: ${{ fromJSON(matrix.runner) }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # x86_64 configs (CUDA/Ubuntu controlled by Docker build args)
+          - { name: "x86_64 / cuda-12.6 / ubuntu-22.04", runner: '["gpu"]', cuda: "12.6.3", ubuntu: "22.04", archs: "75;80;86;89;90", platform: "x86_64", wheel: true }
+          - { name: "x86_64 / cuda-12.6 / ubuntu-24.04", runner: '["gpu"]', cuda: "12.6.3", ubuntu: "24.04", archs: "75;80;86;89;90", platform: "x86_64", wheel: true }
+          - { name: "x86_64 / cuda-13.2 / ubuntu-22.04", runner: '["gpu"]', cuda: "13.2.0", ubuntu: "22.04", archs: "75;80;86;89;100;120;121", platform: "x86_64", wheel: true }
+          - { name: "x86_64 / cuda-13.2 / ubuntu-24.04", runner: '["gpu"]', cuda: "13.2.0", ubuntu: "24.04", archs: "75;80;86;89;100;120;121", platform: "x86_64", wheel: true }
+
+          # Jetson configs (CUDA version must match host JetPack driver)
+          # Orin uses base_image override; cuda value is not used for the Docker base but kept for artifact naming
+          - { name: "aarch64 / Orin (JP 6.1)",  runner: '["jetson-orin"]', cuda: "12.6.3", ubuntu: "22.04", archs: "87",  platform: "orin",  wheel: false, base_image: "nvcr.io/nvidia/12.6.11-devel:12.6.11-devel-aarch64-ubuntu22.04" }
+          - { name: "aarch64 / Thor (JP 7.1)",  runner: '["jetson-thor"]', cuda: "13.0.1", ubuntu: "24.04", archs: "110", platform: "thor",  wheel: false }
+    steps:
+      - name: Verify GPU
+        run: nvidia-smi
+
+      - uses: actions/checkout@v5
+        with:
+          lfs: false
+
+      - name: Pull LFS test data
+        run: git lfs pull --include="test_data/"
+
+      - name: Build C++ libraries
+        run: |
+          CUDA_VERSION=${{ matrix.cuda }} \
+          UBUNTU_VERSION=${{ matrix.ubuntu }} \
+          BASE_IMAGE="${{ matrix.base_image }}" \
+          EXTRA_CMAKE_ARGS="-DCMAKE_CUDA_ARCHITECTURES=${{ matrix.archs }}" \
+          ./scripts/build_cuvslam_in_docker.sh Release ./output
+
+      - name: Run C++ tests
+        run: ./scripts/test_cuvslam_in_docker.sh ./output
+
+      - name: Build Python wheel
+        if: matrix.wheel
+        run: |
+          CUDA_VERSION=${{ matrix.cuda }} \
+          UBUNTU_VERSION=${{ matrix.ubuntu }} \
+          ./scripts/build_pycuvslam_in_docker.sh ./output
+
+      - name: Run Python tests
+        run: ./scripts/test_pycuvslam_in_docker.sh ./output
+
+      - name: Upload C++ test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-cpp-${{ matrix.platform }}-cuda${{ matrix.cuda }}-ubuntu${{ matrix.ubuntu }}
+          path: output/cpp-test-results.xml
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload C++ libraries
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cuvslam-${{ matrix.platform }}-cuda${{ matrix.cuda }}-ubuntu${{ matrix.ubuntu }}
+          path: output/build/bin/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload Python wheel
+        if: always() && matrix.wheel
+        uses: actions/upload-artifact@v7
+        with:
+          name: pycuvslam-${{ matrix.platform }}-cuda${{ matrix.cuda }}-ubuntu${{ matrix.ubuntu }}
+          path: output/wheel/*.whl
+          retention-days: 30
+          if-no-files-found: warn
+
+  nightly-status:
+    name: Nightly status & release
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [check-changes, build-and-test]
+    # contents: write required by gh release create (tags + assets)
+    permissions:
+      contents: write
+    steps:
+      - name: Check result
+        id: check
+        run: |
+          if [ "${{ needs.check-changes.outputs.should_build }}" = "false" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Nightly skipped: no changes in last 24 hours."
+          elif [ "${{ needs.build-and-test.result }}" != "success" ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "One or more nightly builds failed: ${{ needs.build-and-test.result }}"
+            exit 1
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "All nightly builds passed — creating release."
+          fi
+
+      - uses: actions/checkout@v5
+        if: steps.check.outputs.skip == 'false'
+        with:
+          persist-credentials: false
+
+      - name: Download all artifacts
+        if: steps.check.outputs.skip == 'false'
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Generate release notes and package assets
+        if: steps.check.outputs.skip == 'false'
+        id: release-notes
+        run: |
+          DATE=$(date -u +%Y-%m-%d)
+          echo "date=${DATE}" >> "$GITHUB_OUTPUT"
+
+          mkdir -p release-assets
+
+          {
+            echo "## Test Results"
+            echo ""
+            echo "| Configuration | Tests | Passed | Failed | Time |"
+            echo "|---|---|---|---|---|"
+          } > release-notes.md
+
+          for dir in artifacts/test-results-cpp-*; do
+            [ -d "$dir" ] || continue
+            CONFIG=$(basename "$dir" | sed 's/test-results-cpp-//' | sed 's/-/ \/ /g' | sed 's/cuda/cuda-/' | sed 's/ubuntu/ubuntu-/')
+            XML=$(find "$dir" -name "*.xml" | head -1)
+            if [ -f "$XML" ]; then
+              TESTS=$(grep -oP 'tests="\K[0-9]+' "$XML" | head -1)
+              FAILURES=$(grep -oP 'failures="\K[0-9]+' "$XML" | head -1)
+              TIME=$(grep -oP 'time="\K[0-9.]+' "$XML" | head -1)
+              TESTS=${TESTS:-"?"}
+              FAILURES=${FAILURES:-"?"}
+              TIME=${TIME:-"?"}
+              if [ "$TESTS" != "?" ] && [ "$FAILURES" != "?" ]; then
+                PASSED=$((TESTS - FAILURES))
+              else
+                PASSED="?"
+              fi
+              echo "| ${CONFIG} | ${TESTS} | ${PASSED} | ${FAILURES} | ${TIME}s |" >> release-notes.md
+              cp "$XML" "release-assets/$(basename "$dir").xml"
+            fi
+          done
+
+          echo "" >> release-notes.md
+          echo "Commit: ${{ github.sha }}" >> release-notes.md
+
+          for dir in artifacts/cuvslam-*; do
+            [ -d "$dir" ] || continue
+            NAME=$(basename "$dir")
+            tar czf "release-assets/${NAME}.tar.gz" -C "$dir" .
+          done
+
+          for dir in artifacts/pycuvslam-*; do
+            [ -d "$dir" ] || continue
+            for whl in "$dir"/*.whl; do
+              [ -f "$whl" ] || continue
+              cp "$whl" "release-assets/$(basename "$dir")-$(basename "$whl")"
+            done
+          done
+
+          echo "=== Release Notes ==="
+          cat release-notes.md
+          echo "=== Assets ==="
+          ls -lh release-assets/
+
+      - name: Create GitHub Release
+        if: steps.check.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="nightly-${{ steps.release-notes.outputs.date }}"
+          gh release delete "$TAG" --cleanup-tag --yes 2>/dev/null || true
+          gh release create "$TAG" \
+            --target ${{ github.sha }} \
+            --title "Nightly ${{ steps.release-notes.outputs.date }}" \
+            --notes-file release-notes.md \
+            --prerelease \
+            release-assets/*

@@ -6,9 +6,11 @@ repos:
       - id: fix-byte-order-marker  # <--- Removes <U+FEFF>
       - id: end-of-file-fixer      # Ensures file ends with a newline
       - id: trailing-whitespace
+      - id: check-yaml
       - id: check-toml
       - id: check-json
       - id: check-executables-have-shebangs
+      - id: check-shebang-scripts-are-executable
       - id: no-commit-to-branch    # Prevents committing to master
       - id: mixed-line-ending
         args:
@@ -48,3 +50,12 @@ repos:
     hooks:
       - id: clang-format
         types_or: [c, c++, cuda]
+
+  - repo: local
+    hooks:
+      - id: check-workflow-security
+        name: Verify CI workflow security guards
+        entry: scripts/check-workflow-security.sh
+        language: script
+        files: ^\.github/workflows/.*\.ya?ml$
+        pass_filenames: false

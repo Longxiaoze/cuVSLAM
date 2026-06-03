@@ -1,0 +1,309 @@
+name: PR Verify
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  lint:
+    name: "Lint"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Build lint Docker image
+        run: docker build -f scripts/Dockerfile.lint . --network host --tag cuvslam-lint:local
+
+      - name: Run pre-commit (changed files)
+        run: |
+          docker run --rm \
+            -v "$(pwd):/cuvslam" \
+            -w /cuvslam \
+            cuvslam-lint:local \
+            bash -c "git config --global --add safe.directory /cuvslam && pre-commit run --from-ref origin/main --to-ref HEAD"
+
+  build-test-x86:
+    name: "Build + Test (x86_64)"
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [gpu]
+    timeout-minutes: 120
+    steps:
+      - name: Verify GPU
+        run: nvidia-smi
+
+      - uses: actions/checkout@v5
+        with:
+          lfs: false
+
+      - name: Pull LFS test data
+        run: git lfs pull --include="test_data/"
+
+      - name: Build
+        run: ./scripts/build_cuvslam_in_docker.sh Release ./output
+
+      - name: Run C++ tests
+        run: ./scripts/test_cuvslam_in_docker.sh ./output
+
+      - name: Run Python tests
+        run: ./scripts/test_pycuvslam_in_docker.sh ./output
+
+      - name: Build documentation
+        run: |
+          docker run --rm \
+            -v "$(pwd):/cuvslam:ro" \
+            -v "$(realpath ./output):/output" \
+            -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
+            cuvslam:local bash -c '
+              set -euo pipefail
+              trap "chown -R $HOST_UID:$HOST_GID /output" EXIT
+              CUVSLAM_BUILD_DIR=/output/build SKBUILD_BUILD_DIR=/tmp/skbuild \
+                pip install /cuvslam/python/
+              sphinx-build -W -b html /cuvslam/python/docs /output/docs
+            '
+
+      - name: Upload documentation
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-html
+          path: output/docs/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          python3 scripts/junit-to-markdown.py x86_64 C++ output/cpp-test-results.xml > output/test-summary.txt
+          python3 scripts/junit-to-markdown.py x86_64 Python output/python-test-output.txt >> output/test-summary.txt
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-x86_64
+          path: |
+            output/cpp-test-results.xml
+            output/test-summary.txt
+          retention-days: 30
+          if-no-files-found: warn
+
+  build-test-orin:
+    name: "Build + Test (Orin)"
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [jetson-orin]
+    timeout-minutes: 120
+    # Orin uses BASE_IMAGE override; CUDA_VERSION is not used for the Docker base
+    env:
+      BASE_IMAGE: "nvcr.io/nvidia/12.6.11-devel:12.6.11-devel-aarch64-ubuntu22.04"
+      UBUNTU_VERSION: "22.04"
+    steps:
+      - name: System info
+        run: |
+          cat /etc/nv_tegra_release 2>/dev/null || echo "No tegra release file"
+          dpkg-query -W nvidia-jetpack 2>/dev/null || echo "nvidia-jetpack not installed"
+          uname -r
+
+      - uses: actions/checkout@v5
+        with:
+          lfs: false
+
+      - name: Pull LFS test data
+        run: git lfs pull --include="test_data/"
+
+      - name: Build
+        run: ./scripts/build_cuvslam_in_docker.sh Release ./output
+
+      - name: Run C++ tests
+        run: ./scripts/test_cuvslam_in_docker.sh ./output
+
+      - name: Run Python tests
+        run: ./scripts/test_pycuvslam_in_docker.sh ./output
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          python3 scripts/junit-to-markdown.py Orin C++ output/cpp-test-results.xml > output/test-summary.txt
+          python3 scripts/junit-to-markdown.py Orin Python output/python-test-output.txt >> output/test-summary.txt
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-orin
+          path: |
+            output/cpp-test-results.xml
+            output/test-summary.txt
+          retention-days: 30
+          if-no-files-found: warn
+
+  build-test-thor:
+    name: "Build + Test (Thor)"
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [jetson-thor]
+    timeout-minutes: 120
+    env:
+      CUDA_VERSION: "13.0.1"
+      UBUNTU_VERSION: "24.04"
+    steps:
+      - name: System info
+        run: |
+          cat /etc/nv_tegra_release 2>/dev/null || echo "No tegra release file"
+          dpkg-query -W nvidia-jetpack 2>/dev/null || echo "nvidia-jetpack not installed"
+          uname -r
+
+      - uses: actions/checkout@v5
+        with:
+          lfs: false
+
+      - name: Pull LFS test data
+        run: git lfs pull --include="test_data/"
+
+      - name: Build
+        run: ./scripts/build_cuvslam_in_docker.sh Release ./output
+
+      - name: Run C++ tests
+        run: ./scripts/test_cuvslam_in_docker.sh ./output
+
+      - name: Run Python tests
+        run: ./scripts/test_pycuvslam_in_docker.sh ./output
+
+      - name: Generate test summary
+        if: always()
+        run: |
+          python3 scripts/junit-to-markdown.py Thor C++ output/cpp-test-results.xml > output/test-summary.txt
+          python3 scripts/junit-to-markdown.py Thor Python output/python-test-output.txt >> output/test-summary.txt
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-thor
+          path: |
+            output/cpp-test-results.xml
+            output/test-summary.txt
+          retention-days: 30
+          if-no-files-found: warn
+
+  test-report:
+    name: "Post Test Report"
+    if: always() && github.event.pull_request.head.repo.full_name == github.repository
+    needs: [build-test-x86, build-test-orin, build-test-thor]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: write
+      actions: read
+    steps:
+      - name: Download all test summaries
+        uses: actions/download-artifact@v8
+        with:
+          pattern: test-results-*
+          path: results
+
+      - name: Build combined report
+        run: |
+          {
+            echo "## Test Results"
+            echo ""
+            echo "| Status | Platform | Language | Total | Passed | Failed | Errors | Skipped |"
+            echo "|:------:|----------|----------|------:|-------:|-------:|-------:|--------:|"
+            for f in results/*/test-summary.txt; do
+              [ -f "$f" ] || continue
+              while IFS='|' read -r status platform lang total passed failed errors skipped details; do
+                if [ "$status" = "pass" ]; then icon="✅"; elif [ "$status" = "fail" ]; then icon="❌"; else icon="⚠️"; fi
+                echo "| $icon | $platform | $lang | $total | $passed | $failed | $errors | $skipped |"
+              done < "$f"
+            done
+            echo ""
+
+            # Collect failed test details
+            has_failures=false
+            for f in results/*/test-summary.txt; do
+              [ -f "$f" ] || continue
+              while IFS='|' read -r status platform lang total passed failed errors skipped details; do
+                if [ -n "$details" ] && [ "$details" != "" ]; then
+                  has_failures=true
+                fi
+              done < "$f"
+            done
+
+            if [ "$has_failures" = "true" ]; then
+              echo "<details><summary>Failed tests</summary>"
+              echo ""
+              for f in results/*/test-summary.txt; do
+                [ -f "$f" ] || continue
+                while IFS='|' read -r status platform lang total passed failed errors skipped details; do
+                  if [ -n "$details" ] && [ "$details" != "" ]; then
+                    echo "**$platform / $lang:**"
+                    echo "$details" | python3 -c 'import sys,json;[print("- **%s**: %s"%(n,m))for n,m in json.loads(sys.stdin.read())]'
+                    echo ""
+                  fi
+                done < "$f"
+              done
+              echo "</details>"
+            fi
+          } > report.md
+          cat report.md
+
+      - name: Post PR comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            let body = fs.readFileSync('report.md', 'utf8');
+
+            const { data: { artifacts } } = await github.rest.actions.listWorkflowRunArtifacts({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+            });
+
+            if (artifacts.length > 0) {
+              const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+              body += '\n### Artifacts\n\n';
+              for (const a of artifacts) {
+                body += `- [${a.name}](${runUrl}/artifacts/${a.id})\n`;
+              }
+            }
+
+            const marker = '<!-- cuvslam-test-report -->';
+            const fullBody = `${marker}\n${body}`;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing = comments.find(c => c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body: fullBody,
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: fullBody,
+              });
+            }

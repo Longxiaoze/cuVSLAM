@@ -18,8 +18,9 @@
 #   --jobs=N           Set number of parallel jobs (default: 8)
 #
 # Environment variables (optional):
-#   CUVSLAM_SRC_DIR    Source directory (default: /cuvslam/src)
-#   CUVSLAM_DST_DIR    Build directory (default: /cuvslam/build)
+#   CUVSLAM_SRC_DIR      Source directory (default: /cuvslam/src)
+#   CUVSLAM_DST_DIR      Build directory (default: /cuvslam/build)
+#   EXTRA_CMAKE_ARGS     Additional arguments passed to cmake
 #
 # Note: Boolean flags (--modules_test, --api_test, --build_lib, --build_docs)
 #       don't require =true, they are just flags.
@@ -104,7 +105,7 @@ CMAKE_ARGS="-DUSE_RERUN=$USE_RERUN -DCMAKE_BUILD_TYPE=$BUILD_TYPE"
 if [ -n "$CUDA_ARCH" ]; then
   CMAKE_ARGS="$CMAKE_ARGS -DCMAKE_CUDA_ARCHITECTURES=$CUDA_ARCH"
 fi
-cmake $CMAKE_ARGS -S $SRC -B $DST
+cmake $CMAKE_ARGS ${EXTRA_CMAKE_ARGS:-} -S $SRC -B $DST
 # Build all CMake targets regardless of the flags
 make -j${MAKE_JOBS} -C $DST
 
