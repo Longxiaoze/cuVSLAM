@@ -102,38 +102,41 @@ SelectorMono::SelectorMono(const SelectorMonoSettings& settings, bool mono) : se
 
 void SelectorMono::set_image_width(uint32_t width) { width_ = width; }
 
-void SelectorMono::reset_selector() { first_kf_selected_ = false; }
+void SelectorMono::reset_selector() { first_feature_initialization_selected_ = false; }
 
 bool SelectorMono::select(const TracksVector& cur_frame_tracks) {
   assert(IsSorted(cur_frame_tracks));
 
-  if (!first_kf_selected_) {
-    first_kf_selected_ = true;  // first frame is always keyframe
-    return true;                // all tracks are dead, need new keyframe ASAP
-  }
-
-  float sum_motion;
-  const uint32_t n_survivors_from_last = CalcNSurvivors(last_kf_tracks_, cur_frame_tracks, &sum_motion);
-  if (n_survivors_from_last == 0) {
-    return true;  // all tracks are dead, need new keyframe ASAP
-  }
-
-  assert(CalcNSurvivors(last_kf_tracks_, cur_frame_tracks) == n_survivors_from_last);
-
-  if (CalcSurvivorTracksPercentage(last_kf_tracks_, n_survivors_from_last) < settings_.survivor_from_last) {
+  if (!first_feature_initialization_selected_) {
+    first_feature_initialization_selected_ = true;
     return true;
   }
 
-  const uint32_t n_survivors_from_penultimate = CalcNSurvivors(last_but_one_kf_tracks_, cur_frame_tracks);
+  float sum_motion;
+  const uint32_t n_survivors_from_last =
+      CalcNSurvivors(last_feature_initialization_tracks_, cur_frame_tracks, &sum_motion);
+  if (n_survivors_from_last == 0) {
+    return true;
+  }
+
+  assert(CalcNSurvivors(last_feature_initialization_tracks_, cur_frame_tracks) == n_survivors_from_last);
+
+  if (CalcSurvivorTracksPercentage(last_feature_initialization_tracks_, n_survivors_from_last) <
+      settings_.survivor_from_last) {
+    return true;
+  }
+
+  const uint32_t n_survivors_from_penultimate =
+      CalcNSurvivors(penultimate_feature_initialization_tracks_, cur_frame_tracks);
   const float survivor_from_penultimate = settings_.survivor_from_penultimate;
 
   const float av_motion_in_pixels = sum_motion / n_survivors_from_last;
   const float av_motion_normalized = av_motion_in_pixels / width_;
 
   if (mono_ &&
-      CalcSurvivorTracksPercentage(last_but_one_kf_tracks_, n_survivors_from_penultimate) <=
+      CalcSurvivorTracksPercentage(penultimate_feature_initialization_tracks_, n_survivors_from_penultimate) <=
           survivor_from_penultimate &&
-      av_motion_normalized > settings_.min_av_motion_to_keyframe) {
+      av_motion_normalized > settings_.min_av_motion_to_initialization) {
     return true;
   }
 
@@ -143,8 +146,8 @@ bool SelectorMono::select(const TracksVector& cur_frame_tracks) {
 void SelectorMono::set_tracks(const TracksVector& cur_frame_tracks) {
   assert(IsSorted(cur_frame_tracks));
 
-  last_but_one_kf_tracks_ = last_kf_tracks_;
-  last_kf_tracks_ = cur_frame_tracks;
+  penultimate_feature_initialization_tracks_ = last_feature_initialization_tracks_;
+  last_feature_initialization_tracks_ = cur_frame_tracks;
 }
 
 }  // namespace cuvslam::sof

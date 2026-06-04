@@ -23,20 +23,20 @@
 namespace cuvslam::sof {
 
 struct SelectorMonoSettings {
-  // The current frame becomes keyframe if the percent of survivor tracks
-  // from the last keyframe is less than this value
+  // Initialize new feature tracks if the percent of survivor tracks
+  // from the last feature initialization is less than this value.
   float survivor_from_last = 41.f;
 
-  // The current frame becomes keyframe if the percent of survivor tracks
-  // from penultimate keyframe is less than this value
+  // Initialize new feature tracks if the percent of survivor tracks
+  // from the penultimate feature initialization is less than this value.
   float survivor_from_penultimate = 10.f;
 
-  // The current frame becomes keyframe if the average motion
+  // Initialize new feature tracks if the average motion
   // in normalized (/ width) values is higher than this value
   float av_motion_from_last = 0.194f;
 
-  // Current frame is not keyframe until motion > min_av_motion_to_keyframe
-  float min_av_motion_to_keyframe = 0.1f;
+  // New feature tracks are not initialized until motion > min_av_motion_to_initialization.
+  float min_av_motion_to_initialization = 0.1f;
 };
 
 class SelectorMono : public ISelector {
@@ -52,9 +52,9 @@ private:
   SelectorMonoSettings settings_;
   bool mono_ = false;
   uint32_t width_ = 0;
-  bool first_kf_selected_ = false;
-  TracksVector last_but_one_kf_tracks_;  // expected to be ordered by TrackeId
-  TracksVector last_kf_tracks_;          // expected to be ordered by TrackeId
+  bool first_feature_initialization_selected_ = false;
+  TracksVector penultimate_feature_initialization_tracks_;  // expected to be ordered by TrackId
+  TracksVector last_feature_initialization_tracks_;         // expected to be ordered by TrackId
 };
 
 }  // namespace cuvslam::sof

@@ -77,31 +77,34 @@ SelectorStereo::SelectorStereo(const SelectorStereoSettings& settings) : setting
 void SelectorStereo::set_image_width(uint32_t /* width */) {}
 
 void SelectorStereo::reset_selector() {
-  first_kf_selected_ = false;
-  last_kf_tracks_.reset();
+  first_feature_initialization_selected_ = false;
+  last_feature_initialization_tracks_.reset();
 }
 
 bool SelectorStereo::select(const TracksVector& cur_frame_tracks) {
-  if (!first_kf_selected_) {
-    first_kf_selected_ = true;  // first frame is always keyframe
-    return true;                // all tracks are dead, need new keyframe ASAP
+  if (!first_feature_initialization_selected_) {
+    first_feature_initialization_selected_ = true;
+    return true;
   }
 
-  const uint32_t n_survivors_from_last = CalcNSurvivors(last_kf_tracks_, cur_frame_tracks);
+  const uint32_t n_survivors_from_last = CalcNSurvivors(last_feature_initialization_tracks_, cur_frame_tracks);
   if (n_survivors_from_last == 0) {
-    return true;  // all tracks are dead, need new keyframe ASAP
+    return true;
   }
 
-  assert(CalcNSurvivors(last_kf_tracks_, cur_frame_tracks) == n_survivors_from_last);
+  assert(CalcNSurvivors(last_feature_initialization_tracks_, cur_frame_tracks) == n_survivors_from_last);
 
-  if (CalcSurvivorTracksPercentage(last_kf_tracks_, n_survivors_from_last) < settings_.survivor_from_last) {
+  if (CalcSurvivorTracksPercentage(last_feature_initialization_tracks_, n_survivors_from_last) <
+      settings_.survivor_from_last) {
     return true;
   }
 
   return false;
 }
 
-void SelectorStereo::set_tracks(const TracksVector& cur_frame_tracks) { last_kf_tracks_ = cur_frame_tracks; }
+void SelectorStereo::set_tracks(const TracksVector& cur_frame_tracks) {
+  last_feature_initialization_tracks_ = cur_frame_tracks;
+}
 
 void KillTracksOnBorder(size_t w, size_t h, size_t border_top, size_t border_bottom, size_t border_left,
                         size_t border_right, sof::TracksVector& tracks) {

@@ -23,8 +23,8 @@
 namespace cuvslam::sof {
 
 struct SelectorStereoSettings {
-  // The current frame becomes keyframe if the percent of survivor tracks
-  // from the last keyframe is less than this value
+  // Initialize new primary-camera feature tracks if the percent of survivor tracks
+  // from the last feature initialization is less than this value.
   float survivor_from_last = 41.f;
 };
 
@@ -39,8 +39,8 @@ public:
 
 private:
   SelectorStereoSettings settings_;
-  bool first_kf_selected_ = false;
-  TracksVector last_kf_tracks_;
+  bool first_feature_initialization_selected_ = false;
+  TracksVector last_feature_initialization_tracks_;
 };
 
 }  // namespace cuvslam::sof
