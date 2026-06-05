@@ -400,8 +400,9 @@ bool runInertialPnP(const imu::ImuCalibration& calib, const InertialPnP& solver,
 }
 
 // OUT: curr_pose - current pose if success otherwise curr_pose is unchanged
+// landmark_buffer is caller-owned scratch storage for TrackId -> position.
 bool runStereoPnP(pnp::PNPSolver& solver, const std::unordered_map<TrackId, Track>& tracks3d,
-                  const std::vector<camera::Observation>& observations, map::Map<TrackId, Vector3T>& landmarks,
+                  const std::vector<camera::Observation>& observations, map::Map<TrackId, Vector3T>& landmark_buffer,
                   const Isometry3T& imu_from_rig, const pnp::PNPSettings& settings,
                   sba_imu::Pose& prev_pose,  // non-const because of velocities updates
                   sba_imu::Pose& curr_pose) {
@@ -411,17 +412,17 @@ bool runStereoPnP(pnp::PNPSolver& solver, const std::unordered_map<TrackId, Trac
    * prev_pose.w_from_imu * imu_from_rig = prev_rig_from_world_.inverse()
    * prev_rig_from_world_ = (prev_pose.w_from_imu * imu_from_rig).inverse()  */
 
-  landmarks.clear();
-  landmarks.reserve(tracks3d.size());
+  landmark_buffer.clear();
+  landmark_buffer.reserve(tracks3d.size());
   for (const auto& [track_id, track] : tracks3d) {
     if (track.hasLocation()) {
-      landmarks.insert({track_id, track.getLocation3D()});
+      landmark_buffer.insert({track_id, track.getLocation3D()});
     }
   }
 
   Isometry3T rig_from_world = (prev_pose.w_from_imu * imu_from_rig).inverse();
   Matrix6T info;
-  const bool result = solver.solve(rig_from_world, info, observations, landmarks, settings);
+  const bool result = solver.solve(rig_from_world, info, observations, landmark_buffer, settings);
 
   if (result) {
     /* logic here:
@@ -595,7 +596,7 @@ bool SolverSfMInertial::solveNextFrame(int64_t time_ns, const sof::FrameState& f
     } else {
       {
         TRACE_EVENT ev2 = profiler_domain_.trace_event("runStereoPnP");
-        pnp_result = runStereoPnP(stereo_pnp_, pnp_landmarks_, obs_vector_, stereo_pnp_landmarks_, imu_from_rig,
+        pnp_result = runStereoPnP(stereo_pnp_, pnp_landmarks_, obs_vector_, landmark_buffer_, imu_from_rig,
                                   solver_settings.inertial_stereo_pnp, prev_pose, curr_pose);
       }
       if (pnp_result) {
