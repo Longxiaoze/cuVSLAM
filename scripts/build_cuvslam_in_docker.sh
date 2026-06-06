@@ -9,6 +9,8 @@ if [ "$#" -lt 1 ] || [ "$#" -gt 2 ]; then
   echo "  UBUNTU_VERSION  Ubuntu version for base image (default: 24.04)"
   echo "  BASE_IMAGE      Override base Docker image (e.g. NGC Jetson image)"
   echo "  EXTRA_CMAKE_ARGS  Additional CMake arguments"
+  echo "  BUILD_JOBS      Parallel build jobs, passed as --jobs to build_release.sh"
+  echo "                  (default: min(nproc, MemAvailable/4GB) to avoid OOM)"
   exit 1
 fi
 
@@ -31,8 +33,31 @@ DOCKER_USER="--user $(id -u):$(id -g) --group-add video -e HOME=/tmp"
 TTY_FLAG=""
 [ -t 0 ] && TTY_FLAG="-it"
 
+# Cap parallelism so each compile job has ~4GB of available memory, avoiding OOM
+# on memory-constrained runners (e.g. Jetson Thor). Override by setting BUILD_JOBS.
+if [ -z "${BUILD_JOBS:-}" ]; then
+  nproc_n=$(nproc)
+  mem_cap=$(awk '/MemAvailable/ { print int($2/1024/1024/4) }' /proc/meminfo)
+  if [ "$mem_cap" -lt 1 ]; then
+    mem_cap=1
+  fi
+  BUILD_JOBS=$nproc_n
+  if [ "$mem_cap" -lt "$BUILD_JOBS" ]; then
+    BUILD_JOBS=$mem_cap
+  fi
+  echo "Build parallelism: --jobs=$BUILD_JOBS (nproc=$nproc_n, mem-capped jobs=${mem_cap} at 4GB/job)"
+fi
+
+JOBS_ARG=()
+if [[ "$BUILD_JOBS" =~ ^[1-9][0-9]*$ ]]; then
+  JOBS_ARG=( "--jobs=$BUILD_JOBS" )
+else
+  echo "Error: invalid BUILD_JOBS='$BUILD_JOBS' (must be a positive integer)" >&2
+  exit 1
+fi
+
 docker run --runtime=nvidia --gpus all --rm $TTY_FLAG $DOCKER_USER $DOCKER_VOLUMES \
   -e CUVSLAM_SRC_DIR=/cuvslam \
   -e CUVSLAM_DST_DIR=$INSTALL_DIR/build \
   -e EXTRA_CMAKE_ARGS="${EXTRA_CMAKE_ARGS:-}" \
-  cuvslam:local /cuvslam/build_release.sh --build_type="$BUILD_TYPE"
+  cuvslam:local /cuvslam/build_release.sh --build_type="$BUILD_TYPE" "${JOBS_ARG[@]}"
