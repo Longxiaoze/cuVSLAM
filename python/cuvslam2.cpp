@@ -551,6 +551,9 @@ NB_MODULE(pycuvslam, m) {
               "Keyframe selection threshold: survivor tracks percentage (0-100)")
       .def_rw("kf_max_timedelta_between_kfs_s", &cuvslam::internal::Internals::kf_max_timedelta_between_kfs_s,
               "Maximum time delta between consecutive keyframes (seconds)")
+      .def_rw("kf_override_frame_selection", &cuvslam::internal::Internals::kf_override_frame_selection,
+              "Optional per-frame keyframe decision. None uses automatic keyframe selection, True forces keyframe, "
+              "False forces non-keyframe.")
       // PNP Settings
       .def_rw("vo_pnp_lambda", &cuvslam::internal::Internals::vo_pnp_lambda,
               "Visual PNP Levenberg-Marquardt damping factor")

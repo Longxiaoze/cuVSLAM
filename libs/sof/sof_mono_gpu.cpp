@@ -104,10 +104,12 @@ void MonoSOFGPU::collect() {
 }
 
 void MonoSOFGPU::track(const ImageAndSource &curr_image, const ImageContextPtr &prev_image,
-                       const Isometry3T &predicted_world_from_rig, const Settings &sof_settings,
+                       const Isometry3T &predicted_world_from_rig, const MonoSOFFrameSettings &frame_settings,
                        const ImageSource *mask_src) {
   TRACE_EVENT ev = profiler_domain_.trace_event("track", profiler_color_);
   was_launched = false;
+
+  const Settings &sof_settings = frame_settings.sof;
 
   assert(curr_image.source.type == ImageSource::U8);
 
@@ -139,8 +141,10 @@ void MonoSOFGPU::track(const ImageAndSource &curr_image, const ImageContextPtr &
   }
 }
 
-const TracksVector &MonoSOFGPU::finish(FrameState &state, const Settings &sof_settings) {
+const TracksVector &MonoSOFGPU::finish(FrameState &state, const MonoSOFFrameSettings &frame_settings) {
   TRACE_EVENT ev = profiler_domain_.trace_event("finish", profiler_color_);
+
+  const Settings &sof_settings = frame_settings.sof;
 
   // can kill tracks
   if (was_launched) {
@@ -175,7 +179,7 @@ const TracksVector &MonoSOFGPU::finish(FrameState &state, const Settings &sof_se
   }
 
   feature_selector_->set_image_width(curr_img_->get_image_meta().shape.width);
-  if (feature_selector_->select(tracks_)) {
+  if (SelectKeyframe(frame_settings)) {
     state = FrameState::Key;
     new_tracks_.clear();
     addFeatures(curr_img_, tracks_, new_tracks_, sof_settings);

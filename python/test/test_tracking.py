@@ -122,6 +122,76 @@ class TestTracking(unittest.TestCase):
                             #         self.assertAlmostEqual(gravity[1], 9.81, msg=f"iteration {i}")
 
 
+    def _run_keyframe_overrides(self, mode, overrides):
+        """Track a fixed feature-rich frame repeatedly, applying a per-frame keyframe override.
+
+        ``overrides`` is one entry per frame: None for automatic selection, True/False to force the
+        keyframe decision. Returns the list of per-frame ``keyframe`` flags reported by the tracker.
+        """
+        img = data.ImageGenerator(self.rig.cameras, 10)
+        # Reuse one feature-rich frame so the scene is near-static: the automatic selector sees a
+        # high survivor ratio and would naturally pick non-keyframes after the first frame.
+        static_images, _ = img.generate_zoomed_images(0)
+
+        cfg = vslam.Tracker.OdometryConfig()
+        cfg.odometry_mode = mode
+        cfg.enable_observations_export = True  # required so get_state() (and its keyframe flag) is available
+        tracker = vslam.Tracker(self.rig, cfg)
+
+        keyframes = []
+        for i, override in enumerate(overrides):
+            internals = None
+            if override is not None:
+                internals = vslam.Tracker.Internals()
+                internals.kf_override_frame_selection = override
+            # timestamps stay well under kf_max_timedelta_between_kfs_s (60 s) so the time-based
+            # keyframe rule never fires on its own.
+            tracker.track((i + 1) * 1_000_000, static_images, internals=internals)
+            keyframes.append(tracker.odom.get_state().keyframe)
+        return keyframes
+
+    def test_keyframe_override_forces_decision(self):
+        # Multicamera mode routes keyframe selection through KFSelector, which honors
+        # kf_override_frame_selection. Forcing the decision must override automatic selection.
+        num_frames = 6
+        mode = vslam.Tracker.OdometryMode.Multicamera
+
+        forced_kf = self._run_keyframe_overrides(mode, [True] * num_frames)
+        forced_non_kf = self._run_keyframe_overrides(mode, [None] + [False] * (num_frames - 1))
+        automatic = self._run_keyframe_overrides(mode, [None] * num_frames)
+
+        # Forcing True makes every frame a keyframe.
+        self.assertTrue(all(forced_kf), f"override=True should force keyframes, got {forced_kf}")
+        # Forcing False makes every frame after the first a non-keyframe.
+        self.assertTrue(forced_non_kf[0], "first frame is a keyframe under automatic selection")
+        self.assertFalse(any(forced_non_kf[1:]), f"override=False should force non-keyframes, got {forced_non_kf}")
+        # Same input frames, opposite results: the override is what flips the decision.
+        for i in range(1, num_frames):
+            self.assertNotEqual(forced_kf[i], forced_non_kf[i],
+                                f"override should flip the keyframe decision at frame {i}")
+        # The override also changes the automatic decision: the near-static scene yields at least one
+        # automatic non-keyframe, yet forcing True keyframes every frame.
+        self.assertIn(False, automatic, "near-static scene should produce at least one automatic non-keyframe")
+
+    def test_keyframe_override_forces_decision_in_mono(self):
+        # Mono mode uses SelectorMono internally, and kf_override_frame_selection must still force
+        # the reported keyframe decision.
+        num_frames = 6
+        mode = vslam.Tracker.OdometryMode.Mono
+
+        forced_kf = self._run_keyframe_overrides(mode, [True] * num_frames)
+        forced_non_kf = self._run_keyframe_overrides(mode, [None] + [False] * (num_frames - 1))
+        automatic = self._run_keyframe_overrides(mode, [None] * num_frames)
+
+        self.assertTrue(all(forced_kf), f"override=True should force Mono keyframes, got {forced_kf}")
+        self.assertTrue(forced_non_kf[0], "first frame is a keyframe under automatic selection")
+        self.assertFalse(any(forced_non_kf[1:]),
+                         f"override=False should force Mono non-keyframes, got {forced_non_kf}")
+        for i in range(1, num_frames):
+            self.assertNotEqual(forced_kf[i], forced_non_kf[i],
+                                f"override should flip the Mono keyframe decision at frame {i}")
+        self.assertIn(False, automatic, "near-static Mono scene should produce at least one automatic non-keyframe")
+
     def test_get_observations_and_landmarks(self):
         img = data.ImageGenerator(self.rig.cameras, 10)
 

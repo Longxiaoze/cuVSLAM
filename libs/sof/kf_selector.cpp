@@ -93,6 +93,17 @@ bool KFSelector::select(const TracksVector& cur_frame_tracks, const int64_t curr
   TRACE_EVENT ev = profiler_domain_.trace_event("KFSelector::select()", profiler_color_);
   assert(IsSorted(cur_frame_tracks));
 
+  // kf_override_frame_selection is applied here for multicamera, where the keyframe decision is a
+  // single global one. The mono path applies the same override in MonoSOFBase::SelectKeyframe
+  // (guarded by is_mono_mode); the two are mutually exclusive — multicamera constructs
+  // MonoSOFFrameSettings with is_mono_mode=false so the per-camera MonoSOF never double-applies it.
+  if (const std::optional<bool> override_frame_selection = kf_settings.override_frame_selection) {
+    if (*override_frame_selection) {
+      first_kf_selected_ = true;
+    }
+    return *override_frame_selection;
+  }
+
   if (!first_kf_selected_) {
     first_kf_selected_ = true;  // first frame is always keyframe
     return true;                // all tracks are dead, need new keyframe ASAP

@@ -81,6 +81,7 @@ odom::TrackPerFrameSettings BuildTrackFrameSettings(const cuvslam::internal::Int
   result.sof.ransac_filter = internals.ransac_filter;
   result.kf.survivor_from_last = internals.kf_survivor_from_last;
   result.kf.max_timedelta_between_kfs_s = internals.kf_max_timedelta_between_kfs_s;
+  result.kf.override_frame_selection = internals.kf_override_frame_selection;
   result.vo_pnp.lambda = internals.vo_pnp_lambda;
   result.vo_pnp.huber = internals.vo_pnp_huber;
   result.vo_pnp.max_iteration = REQUIRE_NON_NEGATIVE(internals.vo_pnp_max_iteration);

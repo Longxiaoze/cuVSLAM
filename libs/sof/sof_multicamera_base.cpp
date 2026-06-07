@@ -35,6 +35,9 @@ bool MultiSOFBase::trackNextFrame(const Sources& curr_sources, Images& curr_imag
                                   FrameState& state, const odom::TrackPerFrameSettings& per_frame) {
   const sof::Settings& sof_settings = per_frame.sof;
   const odom::KeyFrameSettings& kf_settings = per_frame.kf;
+  // is_mono_mode=false: the keyframe override is applied once globally in KFSelector::select
+  // (see MultiSOFBase::is_keyframe), so the per-camera MonoSOF must not apply it again.
+  const sof::MonoSOFFrameSettings sof_frame_settings{sof_settings, kf_settings, /*is_mono_mode=*/false};
   box_prefilter_ = sof_settings.box3_prefilter;
   TRACE_EVENT ev = profiler_domain_.trace_event("trackNextFrame", profiler_color_);
 
@@ -70,7 +73,7 @@ bool MultiSOFBase::trackNextFrame(const Sources& curr_sources, Images& curr_imag
     }
 
     const ImageSource& mask_src = masks_sources.at(cam_id);
-    sof->track({curr_source, curr_image}, prev_image, predicted_world_from_rig, sof_settings, &mask_src);
+    sof->track({curr_source, curr_image}, prev_image, predicted_world_from_rig, sof_frame_settings, &mask_src);
   }
 
   if (num_failed_sofs == mono_sof_.size()) {
@@ -91,7 +94,7 @@ bool MultiSOFBase::trackNextFrame(const Sources& curr_sources, Images& curr_imag
       continue;
     }
     FrameState mono_state;  // TODO: launch l->r tracking for this stereo camera only if it keyframe
-    const TracksVector& tracks_vector = sof->finish(mono_state, sof_settings);
+    const TracksVector& tracks_vector = sof->finish(mono_state, sof_frame_settings);
     primary_tracks.push_back({cam_id, std::cref(tracks_vector)});
     tracks_vector.export_to_observations_vector(*rig_.intrinsics[cam_id], observations[cam_id]);
   }

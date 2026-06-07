@@ -21,8 +21,10 @@
 #include <algorithm>
 #include <fstream>
 #include <initializer_list>
+#include <optional>
 #include <stdexcept>
 #include <string>
+#include <vector>
 
 #include "common/log.h"
 #include "yaml-cpp/yaml.h"
@@ -66,6 +68,16 @@ YAML::Node LoadYamlRootMap(const char* filepath) {
   return root;
 }
 
+std::optional<bool> ParseOptionalBool(const YAML::Node& node, const char* key) {
+  if (node.IsNull()) {
+    return std::nullopt;
+  }
+  if (!node.IsScalar()) {
+    throw std::runtime_error(std::string("internals.") + key + " must be a bool or null");
+  }
+  return node.as<bool>();
+}
+
 }  // namespace
 
 bool LoadInternalsFromFile(const char* filepath, cuvslam::internal::Internals& internals) {
@@ -83,6 +95,14 @@ bool LoadInternalsFromFile(const char* filepath, cuvslam::internal::Internals& i
   if (YAML::Node v = node["ransac_filter"]) internals.ransac_filter = v.as<bool>();
   if (YAML::Node v = node["kf_survivor_from_last"]) internals.kf_survivor_from_last = v.as<float>();
   if (YAML::Node v = node["kf_max_timedelta_between_kfs_s"]) internals.kf_max_timedelta_between_kfs_s = v.as<int64_t>();
+  if (YAML::Node v = node["kf_override_frame_selection"]) {
+    internals.kf_override_frame_selection = ParseOptionalBool(v, "kf_override_frame_selection");
+    if (internals.kf_override_frame_selection.has_value()) {
+      TraceWarning(
+          "LoadInternalsFromFile: 'kf_override_frame_selection' is a per-frame override; loading it from YAML "
+          "applies the same keyframe decisions to every frame.\n");
+    }
+  }
   if (YAML::Node v = node["vo_pnp_lambda"]) internals.vo_pnp_lambda = v.as<float>();
   if (YAML::Node v = node["vo_pnp_huber"]) internals.vo_pnp_huber = v.as<float>();
   if (YAML::Node v = node["vo_pnp_max_iteration"]) internals.vo_pnp_max_iteration = v.as<int32_t>();
@@ -129,6 +149,7 @@ bool LoadInternalsFromFile(const char* filepath, cuvslam::internal::Internals& i
                    "ransac_filter",
                    "kf_survivor_from_last",
                    "kf_max_timedelta_between_kfs_s",
+                   "kf_override_frame_selection",
                    "vo_pnp_lambda",
                    "vo_pnp_huber",
                    "vo_pnp_max_iteration",

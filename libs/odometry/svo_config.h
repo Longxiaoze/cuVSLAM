@@ -18,6 +18,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -38,6 +39,9 @@ struct KeyFrameSettings {
 
   // maximum timedelta between consecutive keyframes in seconds
   int64_t max_timedelta_between_kfs_s = 60;
+
+  // Explicit per-frame keyframe decision. std::nullopt uses automatic keyframe checks.
+  std::optional<bool> override_frame_selection;
 };
 
 // Bundles all per-frame setting overrides into a single struct

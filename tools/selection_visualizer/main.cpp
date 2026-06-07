@@ -26,6 +26,7 @@
 #include "camera_rig_edex/camera_rig_edex.h"
 #include "common/environment.h"
 #include "edex/file_name_tools.h"
+#include "odometry/svo_config.h"
 #include "sof/image_context.h"
 #include "sof/image_manager.h"
 #include "sof/sof_config_gflags.h"
@@ -131,10 +132,12 @@ static void DoMonoTrack(const std::string& edexFile, std::string outputFolder, s
       prev_image = prev_it->second;
     }
 
-    sof->track({curr_sources[0], curr_image_ptrs[0]}, prev_image, Isometry3T::Identity(), sof_settings,
+    odom::KeyFrameSettings kf_settings;
+    const sof::MonoSOFFrameSettings sof_frame_settings{sof_settings, kf_settings};
+    sof->track({curr_sources[0], curr_image_ptrs[0]}, prev_image, Isometry3T::Identity(), sof_frame_settings,
                &(masks_sources[0]));
     sof::FrameState state;
-    const auto& tracks_vector = sof->finish(state, sof_settings);
+    const auto& tracks_vector = sof->finish(state, sof_frame_settings);
     if (state != sof::FrameState::Key) {
       continue;
     }

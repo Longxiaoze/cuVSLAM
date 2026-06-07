@@ -79,9 +79,10 @@ bool MonoVisualOdometry::track(const Sources& curr_sources, [[maybe_unused]] con
     mask_src = &(mask_src_it->second);
   }
 
+  const sof::MonoSOFFrameSettings sof_frame_settings{effective_sof, per_frame_setting.kf};
   feature_tracker_->track(sof::ImageAndSource(left_curr_source, left_curr_image), left_prev_image,
-                          predicted_world_from_rig, effective_sof, mask_src);
-  const sof::TracksVector& tracks_vector = feature_tracker_->finish(frame_type, effective_sof);
+                          predicted_world_from_rig, sof_frame_settings, mask_src);
+  const sof::TracksVector& tracks_vector = feature_tracker_->finish(frame_type, sof_frame_settings);
   tracks_vector.export_to_observations_vector(intrinsics_, observations_);
 
   IVisualOdometry::VOFrameStat* stat = last_frame_stat_.get();

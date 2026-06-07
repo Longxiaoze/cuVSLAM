@@ -43,6 +43,7 @@ protected:
 
   void PrepareInputMask(const ImageShape& shape);
   void KillTracksWithinMask();
+  bool SelectKeyframe(const MonoSOFFrameSettings& frame_settings);
 
   // internal state
   TracksVector tracks_;  // current tracks

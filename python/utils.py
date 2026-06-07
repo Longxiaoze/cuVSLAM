@@ -237,6 +237,8 @@ def _apply_internals_section(options: Odometry.Internals, section: dict) -> None
             options.kf_survivor_from_last = float(value)
         elif key in ("kf_max_timedelta_between_kfs_s", "kf_max_timedelta_s"):
             options.kf_max_timedelta_between_kfs_s = round(float(value))
+        elif key == "kf_override_frame_selection":
+            options.kf_override_frame_selection = None if value is None else _parse_bool(value)
         elif key == "vo_pnp_lambda":
             options.vo_pnp_lambda = float(value)
         elif key == "vo_pnp_huber":

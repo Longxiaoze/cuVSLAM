@@ -17,6 +17,8 @@
 
 #include "sof/internal/sof_mono_base.h"
 
+#include "odometry/svo_config.h"
+
 namespace cuvslam::sof {
 
 void MonoSOFBase::PredictFeatureLocations(const Isometry3T& predicted_world_from_rig) {
@@ -120,6 +122,23 @@ void MonoSOFBase::KillTracksWithinMask() {
       }
     }
   }
+}
+
+bool MonoSOFBase::SelectKeyframe(const MonoSOFFrameSettings& frame_settings) {
+  // Mono mode applies kf_override_frame_selection here. The multicamera path applies it once,
+  // globally, in KFSelector::select instead — so is_mono_mode is false there and this block is
+  // skipped to avoid applying the override per-camera.
+  if (frame_settings.is_mono_mode) {
+    if (const std::optional<bool> override_frame_selection = frame_settings.kf.override_frame_selection) {
+      if (*override_frame_selection) {
+        // Give the selector a chance to update its first-keyframe state before forcing this frame to key.
+        (void)feature_selector_->select(tracks_);
+      }
+      return *override_frame_selection;
+    }
+  }
+
+  return feature_selector_->select(tracks_);
 }
 
 }  // namespace cuvslam::sof

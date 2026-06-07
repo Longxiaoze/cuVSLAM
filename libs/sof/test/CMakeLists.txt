@@ -23,6 +23,7 @@ set(SOURCES
     basic_convolutor_test.cpp
     interpolation_test.cpp
     image_test.cpp
+    kf_selector_test.cpp
     lk_tracker_test.cpp
     st_tracker_test.cpp
 )

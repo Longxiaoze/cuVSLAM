@@ -34,8 +34,11 @@ MonoSOFCPU::MonoSOFCPU(CameraId cam_id, const camera::ICameraModel &intrinsics, 
       feature_tracker_(CreateTracker(sof_settings.tracker)) {}
 
 void MonoSOFCPU::track(const ImageAndSource &curr_image, const ImageContextPtr &prev_image,
-                       const Isometry3T &worldFromRig, const Settings &sof_settings, const ImageSource *mask_src) {
+                       const Isometry3T &worldFromRig, const MonoSOFFrameSettings &frame_settings,
+                       const ImageSource *mask_src) {
   TRACE_EVENT ev = profiler_domain_.trace_event("MonotrackNextFrame()", profiler_color_);
+
+  const Settings &sof_settings = frame_settings.sof;
 
   assert(curr_image.source.type == ImageSource::U8);
 
@@ -90,7 +93,7 @@ void MonoSOFCPU::track(const ImageAndSource &curr_image, const ImageContextPtr &
   }
 
   feature_selector_->set_image_width(w);
-  if (feature_selector_->select(tracks_)) {
+  if (SelectKeyframe(frame_settings)) {
     last_frame_state_ = FrameState::Key;
     new_tracks_.clear();
     addFeatures(curr_image.image, tracks_, new_tracks_, sof_settings);
@@ -114,7 +117,7 @@ void MonoSOFCPU::track(const ImageAndSource &curr_image, const ImageContextPtr &
   tracks_.remove_dead_tracks();
 }
 
-const TracksVector &MonoSOFCPU::finish(FrameState &state, [[maybe_unused]] const Settings &sof_settings) {
+const TracksVector &MonoSOFCPU::finish(FrameState &state, [[maybe_unused]] const MonoSOFFrameSettings &frame_settings) {
   state = last_frame_state_;
   return tracks_;
 }

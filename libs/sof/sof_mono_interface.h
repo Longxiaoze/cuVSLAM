@@ -25,6 +25,10 @@
 #include "sof/sof.h"
 #include "sof/sof_config.h"
 
+namespace cuvslam::odom {
+struct KeyFrameSettings;
+}
+
 namespace cuvslam::sof {
 
 struct ImageAndSource {
@@ -34,6 +38,13 @@ struct ImageAndSource {
   ImageContextPtr image;
 };
 
+struct MonoSOFFrameSettings {
+  const Settings& sof;
+  const odom::KeyFrameSettings& kf;
+  // Multicamera uses MonoSOF for per-camera feature tracking; its keyframe decision is global.
+  bool is_mono_mode = true;
+};
+
 enum FrameState { None, Key };
 
 class IMonoSOF {
@@ -41,10 +52,10 @@ public:
   virtual ~IMonoSOF() = default;
 
   virtual void track(const ImageAndSource& curr_image, const ImageContextPtr& prev_image,
-                     const Isometry3T& predicted_world_from_rig, const Settings& sof_settings,
+                     const Isometry3T& predicted_world_from_rig, const MonoSOFFrameSettings& frame_settings,
                      const ImageSource* mask_src = nullptr) = 0;
 
-  virtual const TracksVector& finish(FrameState& state, const Settings& sof_settings) = 0;
+  virtual const TracksVector& finish(FrameState& state, const MonoSOFFrameSettings& frame_settings) = 0;
 
   virtual void reset() = 0;
 

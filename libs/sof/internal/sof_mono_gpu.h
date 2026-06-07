@@ -50,10 +50,10 @@ public:
              FeaturePredictorPtr feature_predictor, const Settings& sof_settings);
 
   void track(const ImageAndSource& curr_image, const ImageContextPtr& prev_image,
-             const Isometry3T& predicted_world_from_rig, const Settings& sof_settings,
+             const Isometry3T& predicted_world_from_rig, const MonoSOFFrameSettings& frame_settings,
              const ImageSource* mask_source = nullptr) final;
 
-  const TracksVector& finish(FrameState& state, const Settings& sof_settings) final;
+  const TracksVector& finish(FrameState& state, const MonoSOFFrameSettings& frame_settings) final;
 
   void reset() final;
 

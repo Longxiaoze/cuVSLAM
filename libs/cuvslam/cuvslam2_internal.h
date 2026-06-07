@@ -17,6 +17,7 @@
 #pragma once
 
 #include <cstdint>
+#include <optional>
 #include <string_view>
 
 /**
@@ -72,6 +73,10 @@ struct Internals {
 
   /// Maximum time delta between consecutive keyframes (in seconds). Default: 60
   int64_t kf_max_timedelta_between_kfs_s = 60;
+
+  /// Optional keyframe decision. std::nullopt uses automatic keyframe selection (default),
+  /// true forces a keyframe, and false forces a non-keyframe.
+  std::optional<bool> kf_override_frame_selection;
 
   // ============================================================
   // PNP Solver Settings - visual PNP tracking (stereo / multi-camera modes)
