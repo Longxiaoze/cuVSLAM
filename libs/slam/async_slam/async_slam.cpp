@@ -327,7 +327,9 @@ void AsyncSlam::SetPoseGraphView(std::shared_ptr<ViewManager<ViewPoseGraph>> vie
 
 void AsyncSlam::Run() {
 #ifdef USE_CUDA
-  cudaSetDevice(0);
+  if (options_.use_gpu) {
+    cudaSetDevice(0);
+  }
 #endif
   for (;;) {
     // wait for news in input_queue
