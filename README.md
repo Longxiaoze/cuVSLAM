@@ -169,6 +169,20 @@ cmake --build build --parallel $(nproc)
       ```
    2. Update SRC & DST paths in `build_release.sh`
 
+### CMake options
+
+All flags have defaults; override with `-DFLAG=VALUE`.
+
+| Flag | Default | Purpose |
+|------|---------|---------|
+| `USE_CUDA` | ON | CUDA acceleration |
+| `USE_LMDB` | ON | LMDB map database |
+| `USE_RERUN` | OFF | Rerun SDK visualization |
+| `USE_NVTX` | OFF | NVIDIA NVTX profiling |
+| `TREAT_WARNINGS_AS_ERRORS` | OFF | Strict warning policy |
+
+Build types: `Release` (default), `Debug`, `RelWithDebInfo`, `MinSizeRel`. Do not mix types in the same build directory.
+
 ### Optional: cuNLS
 
 To build with optional **cuNLS** (CUDA nonlinear least squares), install a **static** cuNLS package whose prefix contains `include/` and `lib/libcunls.a`, then configure with:

@@ -1,12 +1,6 @@
 # AGENTS.md — cuVSLAM
 
-AI agent guidance for working in this repository. See `README.md` for general project documentation and `DEVELOPMENT.md` for developer setup.
-
-## Project Overview
-
-cuVSLAM is a CUDA-accelerated Visual Odometry and SLAM library by NVIDIA. It exposes a C++ API (`libs/cuvslam/cuvslam2.h`) and a Python wrapper (`python/`) via nanobind bindings. Current version: see `VERSION`.
-
-Tracking modes: Stereo, Mono, Mono-Depth (RGB-D), Stereo-Inertial, Multi-camera, Multisensor (any-mix RGB / RGB-D, optional IMU; requires cuNLS-enabled build). SLAM capabilities: loop closure, localization against saved maps.
+AI agent guidance for working in this repository. **Start by reading `README.md`** — it is the single source of truth for project overview, tracking modes, performance, install, and build instructions. See `DEVELOPMENT.md` for developer setup.
 
 ## Repository Layout
 
@@ -30,38 +24,6 @@ Key files:
 - `pyproject.toml` — Python package metadata (scikit-build-core + nanobind)
 - `.clang-format` — C++ formatting rules (Google style, 120-char limit)
 - `.pre-commit-config.yaml` — hooks for formatting, copyright headers, style
-
-## Build
-
-### C++ (CMake)
-
-```bash
-# Build everything (from repo root)
-cmake -S . -B build && cmake --build build --parallel $(nproc)
-
-# Or use the convenience script (set env vars or edit SRC/DST in the script)
-export CUVSLAM_SRC_DIR=<path-to-src>
-export CUVSLAM_DST_DIR=<path-to-build>
-./build_release.sh
-```
-
-Notable CMake options (all have defaults; override with `-DFLAG=VALUE`):
-
-| Flag | Default | Purpose |
-|------|---------|---------|
-| `USE_CUDA` | ON | CUDA acceleration |
-| `USE_LMDB` | ON | LMDB map database |
-| `USE_RERUN` | OFF | Rerun SDK visualization |
-| `USE_NVTX` | OFF | NVIDIA NVTX profiling |
-| `TREAT_WARNINGS_AS_ERRORS` | OFF | Strict warning policy |
-
-Build types: `Release` (default), `Debug`, `RelWithDebInfo`, `MinSizeRel`. Do not mix types in the same build directory.
-
-### Python bindings (requires completed C++ build)
-
-```bash
-CUVSLAM_BUILD_DIR=<build-dir> pip install -e python/
-```
 
 ## Testing
 
@@ -102,14 +64,7 @@ clang-format -i path/to/file.cpp
 find . -iname '*.h' -o -iname '*.cpp' | xargs clang-format -i
 ```
 
-**Pre-commit hooks** run on every `git commit` and automatically handle formatting, copyright headers, and basic hygiene. Install once per clone:
-
-```bash
-pipx install pre-commit   # or: pip install pre-commit
-pre-commit install
-```
-
-On Ubuntu 22.04, if pre-commit fails on install, add `export SETUPTOOLS_USE_DISTUTILS=stdlib` to `~/.bashrc`.
+**Pre-commit hooks** run on every `git commit` and automatically handle formatting, copyright headers, and basic hygiene. For install instructions and troubleshooting, see `DEVELOPMENT.md`.
 
 ## Design Concepts
 
@@ -187,12 +142,8 @@ When creating a git branch, use `<user-name>/<branch-name>`, with `<branch-name>
 
 ## Claude Code Skills
 
-Two project-specific skills in `cuvslam-skills/` provide deep cuVSLAM knowledge:
+Two project-specific skills in `cuvslam-skills/` — see `README.md` for descriptions. Install into Claude Code:
 
-- `/cuvslam-onboard` — build from source, install wheels, run examples, prepare KITTI/EuRoC/TUM datasets, live camera setup (RealSense, ZED, OAK-D, Orbbec)
-- `/cuvslam-troubleshoot` — diagnose tracking failures, pose drift, calibration issues, IMU integration problems, build errors, Isaac ROS integration
-
-Install into Claude Code:
 ```bash
 cp -r cuvslam-skills/cuvslam-onboard ~/.claude/skills/
 cp -r cuvslam-skills/cuvslam-troubleshoot ~/.claude/skills/
