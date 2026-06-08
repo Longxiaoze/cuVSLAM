@@ -9,6 +9,8 @@
 
 cuVSLAM is the library by NVIDIA, providing various Visual Tracking Camera modes and Simultaneous Localization and Mapping (SLAM) capabilities. Leveraging CUDA acceleration and a rich set of features, cuVSLAM delivers highly accurate, computationally efficient, real-time performance.
 
+**cuVSLAM works out of the box.** All internal algorithms use carefully engineered defaults or adapt automatically to the environment and motion profile — no parameter tuning is required or expected. To get started, provide two things: accurate camera calibration (intrinsics and extrinsics) and a sensor configuration (which tracking mode matches your rig). Everything else is handled internally.
+
 ![Overview](examples/assets/pycuvslam_overview.jpg)
 
 ## Table of Contents

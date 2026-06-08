@@ -7,7 +7,9 @@ pose is not sufficiently accurate. For installation or build issues, see the rel
 
 ![Troubleshooting](doc/images/troubleshooting.png)
 
-cuVSLAM is mature and well-tested. However, correct operation depends on the following prerequisites:
+**cuVSLAM is not tunable — it works out of the box.** All internal algorithms use carefully engineered defaults or
+adapt automatically to the environment and motion profile. No internal parameter tuning is required or expected.
+When tracking is inaccurate, the root cause is almost always in the inputs, not the algorithm parameters:
 
 1. Accurate intrinsic calibration.
 2. Accurate extrinsic calibration for stereo or multi-camera setups.
@@ -15,7 +17,7 @@ cuVSLAM is mature and well-tested. However, correct operation depends on the fol
 4. Sharp images with low noise.
 5. Scenes that include large, rigid, textured objects.
 6. Avoidance of scenes with strong repetitive patterns or structures.
-7. Correct configuration of all parameters.
+7. Correct sensor configuration (tracking mode, rig description).
 8. Correct coordinate frames for input and output poses.
 9. Sequential frames with small time/pose deltas (no dropped or missing frames).
 
@@ -39,7 +41,7 @@ See [Requirements](README.md#performance).
   - [Disable SLAM and ground constraint](#disable-slam-and-ground-constraint)
 - [Step 6: Verify synchronization](#step-6-verify-synchronization)
 - [Step 7: Run stereo odometry tracking](#step-7-run-stereo-odometry-tracking)
-- [Step 8: Fine-tune odometry](#step-8-fine-tune-odometry)
+- [Step 8: Adjust odometry settings](#step-8-adjust-odometry-settings)
   - [Improve input images](#improve-input-images)
   - [Pick the best odometry mode](#pick-the-best-odometry-mode)
   - [Adjust motion prediction](#adjust-motion-prediction)
@@ -50,7 +52,7 @@ See [Requirements](README.md#performance).
 - [Step 10: Multi-camera setups](#step-10-multi-camera-setups)
 - [Step 11: Enable ground constraint](#step-11-enable-ground-constraint)
 - [Step 12: Enable SLAM](#step-12-enable-slam)
-- [Step 13: Tune SLAM](#step-13-tune-slam)
+- [Step 13: Adjust SLAM map parameters](#step-13-adjust-slam-map-parameters)
 - [Step 14: Run in async mode](#step-14-run-in-async-mode)
 - [EDEX file](#edex-file)
 - [Tracker](#tracker)
@@ -314,7 +316,7 @@ closures, but it cannot correct broken trajectories when odometry has lost track
       keyframes), improve image quality. A quick option within cuVSLAM is to enable `use_denoising` to remove
       image noise. Choose the least noisy channel, and adjust camera exposure and frame rate.
 
-      See [Step 8: Fine-tune odometry](#step-8-fine-tune-odometry)
+      See [Step 8: Adjust odometry settings](#step-8-adjust-odometry-settings)
 
       Example of good 2D tracking:
       ![Good 2D tracking](doc/images/troubleshoot_sof.gif)
@@ -371,7 +373,7 @@ rectified_images
 
 See [Isaac ROS cuVSLAM parameters][].
 
-## Step 8: Fine-tune odometry
+## Step 8: Adjust odometry settings
 
 ### Improve input images
 
@@ -572,7 +574,7 @@ search. Inspect the landmark point cloud and use `sync_mode`, `enable_reading_in
 
 ![VIO vs SLAM](doc/images/troubleshooting_vio_vs_slam.png)
 
-## Step 13: Tune SLAM
+## Step 13: Adjust SLAM map parameters
 
 Tune SLAM parameters such as:
 
@@ -584,13 +586,11 @@ to match your environment and accuracy requirements.
 
 ## Step 14: Run in async mode
 
-For real-time or high-throughput operation, enable async mode. Consider tuning:
+For real-time or high-throughput operation, enable async mode. Adjust these parameters to balance latency and throughput:
 
 1. `Odometry::Config::async_sba`
 2. `Slam::Config::throttling_time_ms`
 3. `Slam::Config::sync_mode`
-
-to balance latency and throughput.
 
 ## EDEX file
 
