@@ -89,6 +89,8 @@ Before making code changes or designing new features, read **[DESIGN_CONCEPTS.md
 - Don't mix different `CMAKE_BUILD_TYPE` values in the same `CUVSLAM_DST_DIR`
 - Don't commit directly to `master` — the pre-commit hook blocks it
 - Don't skip pre-commit with `--no-verify` except to unblock a known false positive
+- Never run `git push`
+- Don't run `git commit` or `git commit --amend` without explicit user permission; always let the user review staged files before committing
 
 ## Merge Request (MR) Policies
 
@@ -136,7 +138,7 @@ When creating a git branch, use `<user-name>/<branch-name>`, with `<branch-name>
 **Ask the user before running:**
 - `cmake --build ... --parallel` full builds (can take 10+ minutes, high CPU/GPU load)
 - `pip install` or `pip install -e` (modifies the Python environment)
-- Any `git commit`, `git push`, or branch operations
+- Any `git commit` or branch operations (never run `git push`)
 - Deleting or overwriting build artifacts or test data
 - Changing versions of FetchContent dependencies in `cmake/ext/`
 
