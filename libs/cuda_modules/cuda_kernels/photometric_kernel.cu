@@ -33,7 +33,7 @@
 // (3.9 -> 1.4), lr0 (1.4 -> 1.0), and office-traj0 (3.6 -> 1.7). 0.03 m sits just above
 // PlaneMapSettings::inlier_thresh (0.02 m), so true plane inliers stay accepted but sofa /
 // lamp / table pixels 5-10 cm off the floor no longer pollute the residual.
-#define P2P_MAX_DIST  0.03f
+#define P2P_MAX_DIST 0.03f
 
 namespace cuvslam::cuda {
 
@@ -47,7 +47,7 @@ namespace {
 // the centroid, rejects outliers farther than 10% of centroid depth, and
 // returns the refined 3D centroid.  Returns (0,0,0) on depth discontinuities.
 __global__ void lift_opencv_kernel(const float2* obs_cv, cudaTextureObject_t depth_tex, float focal_x, float focal_y,
-                                 float principal_x, float principal_y, float3* points_cv, size_t num_points) {
+                                   float principal_x, float principal_y, float3* points_cv, size_t num_points) {
   int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= num_points) {
     return;
@@ -123,9 +123,7 @@ __global__ void lift_opencv_kernel(const float2* obs_cv, cudaTextureObject_t dep
 __device__ __forceinline__ void ComposeSE3_3x4(const float* A, const float* B, float* C) {
   for (int r = 0; r < 3; r++) {
     for (int c = 0; c < 4; c++) {
-      C[r * 4 + c] = A[r * 4 + 0] * B[0 * 4 + c] +
-                     A[r * 4 + 1] * B[1 * 4 + c] +
-                     A[r * 4 + 2] * B[2 * 4 + c] +
+      C[r * 4 + c] = A[r * 4 + 0] * B[0 * 4 + c] + A[r * 4 + 1] * B[1 * 4 + c] + A[r * 4 + 2] * B[2 * 4 + c] +
                      A[r * 4 + 3] * (c == 3 ? 1.f : 0.f);
     }
   }
@@ -141,11 +139,10 @@ __device__ __forceinline__ void ComposeSE3_3x4(const float* A, const float* B, f
 // cam_from_world = cam_from_rig * rig_from_world so the sampled depth point
 // can be transformed into the world frame where the planes live.
 __global__ void point_to_plane_evaluate_kernel(const GPUPlane* planes, int num_planes, int stride,
-                                             cudaTextureObject_t depth_tex, float2 focal, float2 principal,
-                                             int2 image_size,
-                                             float const* const* state_ptrs, const float* cam_from_rig,
-                                             float* residuals, float* jacobians,
-                                             size_t num_factors) {
+                                               cudaTextureObject_t depth_tex, float2 focal, float2 principal,
+                                               int2 image_size, float const* const* state_ptrs,
+                                               const float* cam_from_rig, float* residuals, float* jacobians,
+                                               size_t num_factors) {
   const int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= num_factors) {
     return;
@@ -245,24 +242,22 @@ cudaError_t lift_opencv(const float2* obs_cv, cudaTextureObject_t depth_tex, flo
   size_t threads = MAX_THREADS;
   size_t blocks = (num_points + threads - 1) / threads;
   lift_opencv_kernel<<<blocks, threads, 0, stream>>>(obs_cv, depth_tex, focal_x, focal_y, principal_x, principal_y,
-                                                   points_cv, num_points);
+                                                     points_cv, num_points);
   return cudaGetLastError();
 }
 
-cudaError_t point_to_plane_evaluate(const GPUPlane* planes, int num_planes, int stride,
-                                    cudaTextureObject_t depth_tex, float2 focal, float2 principal, int2 image_size,
-                                    float const* const* state_ptrs, const float* cam_from_rig,
-                                    float* residuals, float* jacobians,
-                                    size_t num_factors, cudaStream_t stream) {
+cudaError_t point_to_plane_evaluate(const GPUPlane* planes, int num_planes, int stride, cudaTextureObject_t depth_tex,
+                                    float2 focal, float2 principal, int2 image_size, float const* const* state_ptrs,
+                                    const float* cam_from_rig, float* residuals, float* jacobians, size_t num_factors,
+                                    cudaStream_t stream) {
   if (num_factors == 0) {
     return cudaSuccess;
   }
   size_t threads = MAX_THREADS;
   size_t blocks = (num_factors + threads - 1) / threads;
-  point_to_plane_evaluate_kernel<<<blocks, threads, 0, stream>>>(planes, num_planes, stride, depth_tex, focal, principal,
-                                                               image_size,
-                                                               state_ptrs, cam_from_rig,
-                                                               residuals, jacobians, num_factors);
+  point_to_plane_evaluate_kernel<<<blocks, threads, 0, stream>>>(planes, num_planes, stride, depth_tex, focal,
+                                                                 principal, image_size, state_ptrs, cam_from_rig,
+                                                                 residuals, jacobians, num_factors);
   return cudaGetLastError();
 }
 

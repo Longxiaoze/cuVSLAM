@@ -40,10 +40,8 @@ __device__ __forceinline__ void TransformPoint(const float* M, float3 p, float3&
 __device__ __forceinline__ void ComposeSE3(const float* A, const float* B, float* C) {
   for (int r = 0; r < 3; r++) {
     for (int c = 0; c < 4; c++) {
-      C[r * 4 + c] = A[r * 4 + 0] * B[0 * 4 + c] +
-                      A[r * 4 + 1] * B[1 * 4 + c] +
-                      A[r * 4 + 2] * B[2 * 4 + c] +
-                      A[r * 4 + 3] * (c == 3 ? 1.f : 0.f);
+      C[r * 4 + c] = A[r * 4 + 0] * B[0 * 4 + c] + A[r * 4 + 1] * B[1 * 4 + c] + A[r * 4 + 2] * B[2 * 4 + c] +
+                     A[r * 4 + 3] * (c == 3 ? 1.f : 0.f);
     }
   }
 }
@@ -62,11 +60,10 @@ __device__ __forceinline__ void ComposeSE3(const float* A, const float* B, float
 // landmarks_world: world-frame 3D reference points from DepthPointMap.
 // state_ptrs: per-factor pointers to rig_from_world (SE3, row-major 4x4).
 // cam_from_rig: device pointer to a single 4x4 SE3 (always provided).
-__global__ void point_to_point_icp_evaluate_kernel(
-    const float3* landmarks_world, float const* const* state_ptrs,
-    const float* cam_from_rig, cudaTextureObject_t depth_tex,
-    float2 focal, float2 principal, int2 image_size,
-    float* residuals, float* jacobians, size_t num_factors) {
+__global__ void point_to_point_icp_evaluate_kernel(const float3* landmarks_world, float const* const* state_ptrs,
+                                                   const float* cam_from_rig, cudaTextureObject_t depth_tex,
+                                                   float2 focal, float2 principal, int2 image_size, float* residuals,
+                                                   float* jacobians, size_t num_factors) {
   const int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= num_factors) {
     return;
@@ -153,17 +150,17 @@ __global__ void point_to_point_icp_evaluate_kernel(
 }  // namespace
 
 cudaError_t point_to_point_icp_evaluate(const float3* landmarks_world, float const* const* state_ptrs,
-                                        const float* cam_from_rig, cudaTextureObject_t depth_tex,
-                                        float2 focal, float2 principal, int2 image_size,
-                                        float* residuals, float* jacobians, size_t num_factors, cudaStream_t stream) {
+                                        const float* cam_from_rig, cudaTextureObject_t depth_tex, float2 focal,
+                                        float2 principal, int2 image_size, float* residuals, float* jacobians,
+                                        size_t num_factors, cudaStream_t stream) {
   if (num_factors == 0) {
     return cudaSuccess;
   }
   size_t threads = MAX_THREADS;
   size_t blocks = (num_factors + threads - 1) / threads;
-  point_to_point_icp_evaluate_kernel<<<blocks, threads, 0, stream>>>(
-      landmarks_world, state_ptrs, cam_from_rig, depth_tex, focal, principal, image_size,
-      residuals, jacobians, num_factors);
+  point_to_point_icp_evaluate_kernel<<<blocks, threads, 0, stream>>>(landmarks_world, state_ptrs, cam_from_rig,
+                                                                     depth_tex, focal, principal, image_size, residuals,
+                                                                     jacobians, num_factors);
   return cudaGetLastError();
 }
 

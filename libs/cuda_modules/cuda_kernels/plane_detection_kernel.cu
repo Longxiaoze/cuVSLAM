@@ -246,8 +246,8 @@ __global__ void compute_plane_stats_kernel(const float3* points, const int* inli
 // Generate plane hypotheses from random index triplets.
 // Each thread processes one triplet: reads 3 points, computes cross product -> plane normal + d.
 // Degenerate triplets (near-zero cross product) produce a zero-length normal (w=0).
-__global__ void generate_hypotheses_kernel(const float3* points, const int* active_indices,
-                                           const int3* triplets, float4* hypotheses, int num_hypotheses) {
+__global__ void generate_hypotheses_kernel(const float3* points, const int* active_indices, const int3* triplets,
+                                           float4* hypotheses, int num_hypotheses) {
   const int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= num_hypotheses) {
     return;
@@ -262,9 +262,7 @@ __global__ void generate_hypotheses_kernel(const float3* points, const int* acti
   // Degenerate (collinear) triplets produce |n| < 1e-8 and are zeroed out.
   const float3 v01 = {p1.x - p0.x, p1.y - p0.y, p1.z - p0.z};
   const float3 v02 = {p2.x - p0.x, p2.y - p0.y, p2.z - p0.z};
-  float3 n = {v01.y * v02.z - v01.z * v02.y,
-              v01.z * v02.x - v01.x * v02.z,
-              v01.x * v02.y - v01.y * v02.x};
+  float3 n = {v01.y * v02.z - v01.z * v02.y, v01.z * v02.x - v01.x * v02.z, v01.x * v02.y - v01.y * v02.x};
   const float len = sqrtf(n.x * n.x + n.y * n.y + n.z * n.z);
   if (len < 1e-8f) {
     hypotheses[tid] = {0.f, 0.f, 0.f, 0.f};
@@ -278,8 +276,8 @@ __global__ void generate_hypotheses_kernel(const float3* points, const int* acti
 
 // Compact active indices: given a flags array (1=keep, 0=remove), write surviving
 // indices from active_in to active_out via atomicAdd on out_count.
-__global__ void compact_active_kernel(const int* active_in, const uint8_t* keep_flags, int num_active,
-                                      int* active_out, int* out_count) {
+__global__ void compact_active_kernel(const int* active_in, const uint8_t* keep_flags, int num_active, int* active_out,
+                                      int* out_count) {
   const int tid = blockIdx.x * blockDim.x + threadIdx.x;
   if (tid >= num_active) {
     return;
@@ -303,8 +301,8 @@ __global__ void fill_iota_kernel(int* out, int n) {
 }  // namespace
 
 cudaError_t unproject_depth_points(cudaTextureObject_t depth_tex, float2 focal, float2 principal, int2 image_size,
-                                   float depth_min, float depth_max, float3* out_points, int* out_count,
-                                   int max_output, int stride, cudaStream_t stream) {
+                                   float depth_min, float depth_max, float3* out_points, int* out_count, int max_output,
+                                   int stride, cudaStream_t stream) {
   const int grid_w = (image_size.x + stride - 1) / stride;
   const int grid_h = (image_size.y + stride - 1) / stride;
   const int num_samples = grid_w * grid_h;
@@ -317,8 +315,8 @@ cudaError_t unproject_depth_points(cudaTextureObject_t depth_tex, float2 focal, 
 }
 
 cudaError_t count_plane_inliers(const float3* points, const int* active_indices, int num_active, float3 plane_n,
-                                float plane_d, float thresh, int* out_count, int* gather_indices,
-                                int* gather_positions, int max_gather, cudaStream_t stream) {
+                                float plane_d, float thresh, int* out_count, int* gather_indices, int* gather_positions,
+                                int max_gather, cudaStream_t stream) {
   if (num_active == 0) {
     return cudaSuccess;
   }
