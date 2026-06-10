@@ -59,3 +59,20 @@ repos:
         language: script
         files: ^\.github/workflows/.*\.ya?ml$
         pass_filenames: false
+
+      - id: isolated-ruleset-change
+        name: Require ruleset/CODEOWNERS/CI-workflow changes in their own PR
+        entry: scripts/check-isolated-ruleset-change.sh
+        language: script
+        always_run: true
+        pass_filenames: false
+        stages: [pre-push]
+        args: ["origin/main"]
+
+      - id: isolated-ruleset-change-ci
+        name: Require ruleset/CODEOWNERS/CI-workflow changes in their own PR (CI)
+        entry: scripts/check-isolated-ruleset-change.sh
+        language: script
+        always_run: true
+        pass_filenames: false
+        stages: [manual]

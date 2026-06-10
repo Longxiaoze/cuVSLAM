@@ -37,6 +37,15 @@ jobs:
             cuvslam-lint:local \
             bash -c 'git config --global --add safe.directory /cuvslam && pre-commit run --from-ref "origin/$GITHUB_BASE_REF" --to-ref HEAD'
 
+      - name: Enforce ruleset/CODEOWNERS isolation
+        run: |
+          docker run --rm \
+            -e GITHUB_BASE_REF \
+            -v "$(pwd):/cuvslam" \
+            -w /cuvslam \
+            cuvslam-lint:local \
+            bash -c 'git config --global --add safe.directory /cuvslam && pre-commit run isolated-ruleset-change-ci --hook-stage manual'
+
   build-test-x86:
     name: "Build + Test (x86_64)"
     if: github.event.pull_request.head.repo.full_name == github.repository
