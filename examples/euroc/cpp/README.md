@@ -29,17 +29,14 @@ The example is built as part of the main workspace:
 
 ```bash
 # From the repository root
-mkdir build
-cd build
-cmake ..
-make track_euroc
+cmake -S . -B build
+cmake --build build --target track_euroc
 ```
 
-To re-build after code changes, just run from the existing `build/` directory:
+To re-build after code changes, run:
 
 ```bash
-cd build
-make track_euroc
+cmake --build build --target track_euroc
 ```
 
 ### Build with Rerun Visualization
@@ -50,10 +47,8 @@ Enable Rerun visualization with the workspace-level `USE_RERUN` option, the Reru
 
 ```bash
 # From the repository root
-mkdir build
-cd build
-cmake -DUSE_RERUN=ON ..
-make track_euroc
+cmake -S . -B build -DUSE_RERUN=ON
+cmake --build build --target track_euroc
 ```
 
 ### Customizing the Layout with Blueprints
@@ -68,11 +63,10 @@ python3 track_euroc.py
 
 ## Running
 
-Run from the `build/` directory. The example requires the EuRoC dataset (see [Python tutorial](../README.md) for downloading instructions):
+The example requires the EuRoC dataset (see [Python tutorial](../README.md) for downloading instructions):
 
 ```bash
-cd build
-./bin/track_euroc /path/to/euroc/dataset/mav0
+./build/bin/track_euroc /path/to/euroc/dataset/mav0
 ```
 
 ## References

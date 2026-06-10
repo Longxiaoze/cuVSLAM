@@ -17,9 +17,8 @@ The official [librealsense Python installation guide](https://github.com/realsen
 
 2. Compile librealsense2 with Python bindings (note the flags):
    ```bash
-   mkdir build && cd build
-   cmake ../ -DCMAKE_BUILD_TYPE=Release -DFORCE_RSUSB_BACKEND=ON -DBUILD_EXAMPLES=true -DBUILD_PYTHON_BINDINGS=true  -DCHECK_FOR_UPDATES=false -DPYTHON_EXECUTABLE=$(which python3)
-   make -j
+   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DFORCE_RSUSB_BACKEND=ON -DBUILD_EXAMPLES=true -DBUILD_PYTHON_BINDINGS=true  -DCHECK_FOR_UPDATES=false -DPYTHON_EXECUTABLE=$(which python3)
+   cmake --build build --parallel $(nproc)
    ```
 
 3. Once the build and installation are finished, add the build directory to your path:

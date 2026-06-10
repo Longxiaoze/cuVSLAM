@@ -60,7 +60,7 @@ fi
 # Check if required Python packages are installed
 if ! python3 -c "import sphinx, sphinx_rtd_theme" 2>/dev/null; then
   echo "Error: Required Python packages (sphinx, sphinx-rtd-theme) not found."
-  echo "Please install them, e.g. using: pip install --user sphinx sphinx-rtd-theme"
+  echo "Please install them, e.g. using: python3 -m pip install --user sphinx sphinx-rtd-theme"
   exit 1
 fi
 
@@ -75,6 +75,6 @@ DOCS_BUILD_DIR="$BUILD_DIR/python_docs"
 mkdir -p "$DOCS_BUILD_DIR"
 
 # Build documentation
-sphinx-build -b html "$SRC_DIR" "$DOCS_BUILD_DIR/html"
+python3 -m sphinx -b html "$SRC_DIR" "$DOCS_BUILD_DIR/html"
 
 echo "You can open $(realpath "$DOCS_BUILD_DIR/html/index.html") in your browser to view documentation."

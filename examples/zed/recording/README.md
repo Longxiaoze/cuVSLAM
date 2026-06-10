@@ -13,7 +13,8 @@ all required dependencies.
   odometry tracking.
   To build:
   ```
-  cmake -B build . && cmake --build build
+  cmake -S . -B build
+  cmake --build build
   ```
   To run recording. Press Ctrl+C to stop recording.
   ```

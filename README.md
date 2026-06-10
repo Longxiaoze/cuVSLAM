@@ -156,10 +156,8 @@ For Python usage, [pre-built wheels](#install-from-wheels) are the recommended a
 In the repository root build C++ code using one of two ways:
 1. Build manually:
 ```
-mkdir build
-cd build
-cmake ..
-make -j
+cmake -S . -B build
+cmake --build build --parallel $(nproc)
 ```
 2. Set source & build paths for `build_release.sh` and run it.
 
@@ -176,7 +174,7 @@ make -j
 To build with optional **cuNLS** (CUDA nonlinear least squares), install a **static** cuNLS package whose prefix contains `include/` and `lib/libcunls.a`, then configure with:
 
 ```bash
-cmake .. -DUSE_CUNLS=ON -DCUVSLAM_CUNLS_ROOT=/path/to/cunls/install
+cmake -S . -B build -DUSE_CUNLS=ON -DCUVSLAM_CUNLS_ROOT=/path/to/cunls/install
 ```
 
 `USE_CUDA` must be `ON`. This sets the `USE_CUNLS` compile definition and links `libcunls.a` into `libcuvslam`; use a cuNLS build where dependencies such as spdlog and cuDSS are already incorporated into the static library so no extra packages are required beyond the CUDA Toolkit.

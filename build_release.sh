@@ -24,12 +24,14 @@
 #
 # Note: Boolean flags (--modules_test, --api_test, --build_lib, --build_docs)
 #       don't require =true, they are just flags.
-# Note: If no flags are set, make all will be performed.
+# Note: If no flags are set, all targets will be built.
 # Note: Don't mix different build types in the same build directory,
 #       use different build directories via CUVSLAM_DST_DIR variable.
 # Note: Test commands will also build necessary targets.
 
 set -e  # Exit immediately if a command exits with a non-zero status
+
+SCRIPT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 
 # Default values
 MODULETESTS=false
@@ -107,12 +109,12 @@ if [ -n "$CUDA_ARCH" ]; then
 fi
 cmake $CMAKE_ARGS ${EXTRA_CMAKE_ARGS:-} -S $SRC -B $DST
 # Build all CMake targets regardless of the flags
-make -j${MAKE_JOBS} -C $DST
+cmake --build "$DST" --parallel "$MAKE_JOBS" --config "$BUILD_TYPE"
 
 # Step 1: Run module tests
 if is_true "$MODULETESTS"; then
   echo "Module tests executed."
-  GTEST_FILTER=-*SpeedUp*:*Speedup* GTEST_RANDOM_SEED=42 ctest --output-on-failure || exit 1
+  GTEST_FILTER=-*SpeedUp*:*Speedup* GTEST_RANDOM_SEED=42 ctest --build-config "$BUILD_TYPE" --output-on-failure || exit 1
 else
   echo "Module tests skipped."
 fi
@@ -120,7 +122,7 @@ fi
 # Step 2: Run Python API tests
 if is_true "$APITESTS"; then
   echo "Python API tests executed."
-  CUVSLAM_BUILD_DIR=$DST pip install --user -e $SRC/python
+  CUVSLAM_BUILD_DIR=$DST python3 -m pip install --user -e $SRC/python
   python3 -m unittest discover -v -s $SRC/python/test --locals || exit 1
 else
   echo "Python API tests skipped."
@@ -136,9 +138,9 @@ fi
 # Step 4: Build documentation
 if is_true "$BUILDDOCS"; then
   echo "Documentation build executed."
-  make -j${MAKE_JOBS} -C $DST doc
-  CUVSLAM_BUILD_DIR=$DST pip install --user -e $SRC/python
-  "$(dirname "$0")/build_docs.sh" --build_dir=$DST --src_dir=$SRC/python/docs
+  cmake --build "$DST" --target doc --parallel "$MAKE_JOBS" --config "$BUILD_TYPE"
+  CUVSLAM_BUILD_DIR=$DST python3 -m pip install --user -e $SRC/python
+  "$SCRIPT_DIR/build_docs.sh" --build_dir=$DST --src_dir=$SRC/python/docs
 else
   echo "Documentation build skipped."
 fi
