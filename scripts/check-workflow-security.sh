@@ -13,6 +13,10 @@ errors=0
 for workflow in .github/workflows/*.yml .github/workflows/*.yaml; do
   [ -f "$workflow" ] || continue
 
+  if ! grep -qE '(^|[[:space:][,])pull_request(_target)?([[:space:]:,]|\]|$)' "$workflow"; then
+    continue
+  fi
+
   # --- Check 1: pull_request_target ---
   if grep -q 'pull_request_target' "$workflow"; then
     echo "ERROR: $workflow uses 'pull_request_target' trigger."
