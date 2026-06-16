@@ -45,7 +45,17 @@ jobs:
           persist-credentials: false
 
       - name: Build CI tools image
-        run: docker build -f scripts/Dockerfile.ci . --network host --tag cuvslam-ci:local
+        env:
+          AWS_CLI_PUBLIC_KEY: ${{ vars.AWS_CLI_PUBLIC_KEY }}
+        run: |
+          keyfile="$RUNNER_TEMP/aws-cli-public-key.asc"
+          if [ -z "${AWS_CLI_PUBLIC_KEY:-}" ]; then
+            echo "AWS_CLI_PUBLIC_KEY repository variable is not configured" >&2
+            exit 1
+          fi
+          printf '%s\n' "$AWS_CLI_PUBLIC_KEY" > "$keyfile"
+          DOCKER_BUILDKIT=1 docker build -f scripts/Dockerfile.ci . --network host --tag cuvslam-ci:local \
+            --secret id=aws_cli_public_key,src="$keyfile"
 
       - name: Seed S3 dataset tarball
         env:
