@@ -44,8 +44,8 @@ s3_tarball_uri() {
   esac
   while [ "${prefix%/}" != "$prefix" ]; do prefix="${prefix%/}"; done
   if [ -n "$prefix" ]; then
-    echo "s3://${bucket}/${prefix}/${name}.tar.gz"
+    echo "s3://${bucket}/${prefix}/${name}.tar"
   else
-    echo "s3://${bucket}/${name}.tar.gz"
+    echo "s3://${bucket}/${name}.tar"
   fi
 }

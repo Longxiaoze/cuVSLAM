@@ -50,7 +50,7 @@ esac
 
 raw_dir="$WORK_DIR/raw"
 converted_dir="$WORK_DIR/converted"
-tarball="$WORK_DIR/${DATASET}.tar.gz"
+tarball="$WORK_DIR/${DATASET}.tar"
 s3_tarball="$(s3_tarball_uri "$DATASET")"
 
 prepare_rel="$(dataset_prepare_script "$DATASET")"
@@ -65,14 +65,26 @@ bash "$REPO_ROOT/$prepare_rel" \
   --output-dir "$converted_dir" \
   "${download_args[@]}"
 
-if [ -z "$(find "$upload_src" -type f -print -quit)" ]; then
+file_count="$(find "$upload_src" -type f | wc -l)"
+if [ "$file_count" -eq 0 ]; then
   echo "Error: $upload_src has no files; refusing to upload an empty tarball." >&2
   exit 1
 fi
 
 echo "=== Creating tarball from $upload_src ==="
+echo "Archiving ${file_count} files"
 sync
-tar -C "$upload_src" -czf "$tarball" --warning=no-file-changed .
+tar_rc=0
+tar -C "$upload_src" -cf "$tarball" \
+  --warning=no-file-changed \
+  --checkpoint=1000 \
+  --checkpoint-action=echo='tar checkpoint %d' \
+  --totals \
+  . || tar_rc=$?
+if [ "$tar_rc" -ne 0 ]; then
+  echo "Error: tar failed with exit code $tar_rc" >&2
+  exit 1
+fi
 ls -lh "$tarball"
 
 if [ "$DRY_RUN" = "true" ]; then
