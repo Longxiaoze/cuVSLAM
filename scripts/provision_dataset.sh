@@ -71,7 +71,8 @@ if [ -z "$(find "$upload_src" -type f -print -quit)" ]; then
 fi
 
 echo "=== Creating tarball from $upload_src ==="
-tar -C "$upload_src" -czf "$tarball" .
+sync
+tar -C "$upload_src" -czf "$tarball" --warning=no-file-changed .
 ls -lh "$tarball"
 
 if [ "$DRY_RUN" = "true" ]; then
