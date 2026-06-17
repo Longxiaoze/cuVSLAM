@@ -57,6 +57,19 @@ prepare_rel="$(dataset_prepare_script "$DATASET")"
 upload_subdir="$(dataset_upload_subdir "$DATASET")"
 upload_src="$converted_dir${upload_subdir:+/$upload_subdir}"
 
+if [ "$DRY_RUN" != "true" ]; then
+  echo "=== Verifying AWS credentials for S3 upload ==="
+  if [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+    echo "Error: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set for upload." >&2
+    exit 1
+  fi
+  if ! caller_arn="$(aws sts get-caller-identity --query Arn --output text 2>/dev/null)"; then
+    echo "Error: AWS credential check failed (sts get-caller-identity). The access key may be invalid or missing. Set repository secrets AWS_S3_ACCESS_KEY_ID and AWS_S3_SECRET_ACCESS_KEY." >&2
+    exit 1
+  fi
+  echo "AWS credentials OK ($caller_arn)"
+fi
+
 rm -rf "$raw_dir" "$converted_dir" "$tarball"
 mkdir -p "$raw_dir" "$converted_dir"
 
