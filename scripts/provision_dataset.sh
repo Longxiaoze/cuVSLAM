@@ -63,8 +63,12 @@ if [ "$DRY_RUN" != "true" ]; then
     echo "Error: AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY must be set for upload." >&2
     exit 1
   fi
-  if ! caller_arn="$(aws sts get-caller-identity --query Arn --output text 2>/dev/null)"; then
-    echo "Error: AWS credential check failed (sts get-caller-identity). The access key may be invalid or missing. Set repository secrets AWS_S3_ACCESS_KEY_ID and AWS_S3_SECRET_ACCESS_KEY." >&2
+  cred_rc=0
+  caller_arn="$(aws sts get-caller-identity --query Arn --output text 2>&1)" || cred_rc=$?
+  if [ "$cred_rc" -ne 0 ]; then
+    echo "Error: AWS credential check failed (sts get-caller-identity, exit $cred_rc):" >&2
+    echo "$caller_arn" >&2
+    echo "Set secrets AWS_S3_ACCESS_KEY_ID and AWS_S3_SECRET_ACCESS_KEY to credentials authorized for $S3_DATASETS_BUCKET." >&2
     exit 1
   fi
   echo "AWS credentials OK ($caller_arn)"
