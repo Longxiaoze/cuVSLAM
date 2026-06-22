@@ -19,6 +19,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
        doxygen graphviz \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+RUN apt-get update && apt-get install -y --no-install-recommends \
+       libgl1 \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+       libpango-1.0-0 libpangocairo-1.0-0 libpangoft2-1.0-0 \
+       libgdk-pixbuf-2.0-0 libffi8 shared-mime-info fonts-dejavu-core \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
 RUN python3 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 

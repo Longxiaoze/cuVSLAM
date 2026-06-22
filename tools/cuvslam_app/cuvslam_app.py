@@ -34,7 +34,7 @@ import os
 import sys
 import time
 import warnings
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Dict, List, Sequence, Any, Optional
@@ -463,7 +463,7 @@ def run_parallel_tracking(json_data, args, CUVSLAM_DATASETS, max_workers=None):
     stats = []
 
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
-        futures = []
+        future_to_title = {}
         for sequence in json_data['sequence_cfgs']:
             if sequence["enable"] is False:
                 continue
@@ -474,10 +474,14 @@ def run_parallel_tracking(json_data, args, CUVSLAM_DATASETS, max_workers=None):
                 CUVSLAM_DATASETS,
                 json_data['dataset_folder']
             )
-            futures.append(future)
+            future_to_title[future] = sequence['sequence_title']
 
-        for future in futures:
+        total = len(future_to_title)
+        print(f"Tracking {total} sequence(s) across {max_workers} worker(s)...", flush=True)
+        for done, future in enumerate(as_completed(future_to_title), start=1):
+            title = future_to_title[future]
             stat = future.result()
+            print(f"[{done}/{total}] finished: {title}", flush=True)
             if stat is not None:
                 stats.append(stat)
 
