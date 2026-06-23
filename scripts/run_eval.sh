@@ -107,8 +107,9 @@ fi
 python3 /cuvslam/scripts/cuvslam_kpi_report.py "${KPI_ARGS[@]}"
 
 if [ "$WRITE_HISTORY" = "true" ]; then
-  cp "$KPI_JSON" "$KPI_HISTORY/kpi_${RUN_ID}.json.tmp"
-  mv -f "$KPI_HISTORY/kpi_${RUN_ID}.json.tmp" "$KPI_HISTORY/kpi_${RUN_ID}.json"
+  # The S3-backed history mount has no rename(2), so publish the KPI JSON with a
+  # direct copy (no atomic rename available on this mount).
+  cp -f "$KPI_JSON" "$KPI_HISTORY/kpi_${RUN_ID}.json"
   echo "Persisted KPI history: $KPI_HISTORY/kpi_${RUN_ID}.json"
   if [ -f "$BASELINE_RANGES" ]; then
     cp "$BASELINE_RANGES" "$KPI_HISTORY/kpi_baseline_ranges.json"
