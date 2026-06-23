@@ -13,6 +13,12 @@ permissions:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  EVAL_KPIS_ARTIFACT: eval-kpis-pr
+  EVAL_REPORT_ARTIFACT: eval-html-report
+  AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION }}
+  S3_DATASETS_BUCKET: ${{ vars.S3_DATASETS_BUCKET }}
+  # PR eval runs on x86_64 with the build script's default CUDA/Ubuntu.
+  EVAL_CONFIG: x86_64-cuda12.6.3-ubuntu24.04
 
 jobs:
   lint:
@@ -25,8 +31,18 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Build lint Docker image
-        run: docker build -f scripts/Dockerfile.lint . --network host --tag cuvslam-lint:local
+      - name: Build CI tools image
+        env:
+          AWS_CLI_PUBLIC_KEY: ${{ vars.AWS_CLI_PUBLIC_KEY }}
+        run: |
+          keyfile="$RUNNER_TEMP/aws-cli-public-key.asc"
+          if [ -z "${AWS_CLI_PUBLIC_KEY:-}" ]; then
+            echo "AWS_CLI_PUBLIC_KEY repository variable is not configured" >&2
+            exit 1
+          fi
+          printf '%s\n' "$AWS_CLI_PUBLIC_KEY" > "$keyfile"
+          DOCKER_BUILDKIT=1 docker build -f scripts/Dockerfile.ci . --network host --tag cuvslam-ci:local \
+            --secret id=aws_cli_public_key,src="$keyfile"
 
       - name: Run pre-commit (changed files)
         run: |
@@ -34,7 +50,7 @@ jobs:
             -e GITHUB_BASE_REF \
             -v "$(pwd):/cuvslam" \
             -w /cuvslam \
-            cuvslam-lint:local \
+            cuvslam-ci:local \
             bash -c 'git config --global --add safe.directory /cuvslam && pre-commit run --from-ref "origin/$GITHUB_BASE_REF" --to-ref HEAD'
 
       - name: Enforce ruleset/CODEOWNERS isolation
@@ -43,7 +59,7 @@ jobs:
             -e GITHUB_BASE_REF \
             -v "$(pwd):/cuvslam" \
             -w /cuvslam \
-            cuvslam-lint:local \
+            cuvslam-ci:local \
             bash -c 'git config --global --add safe.directory /cuvslam && pre-commit run isolated-ruleset-change-ci --hook-stage manual'
 
   build-test-x86:
@@ -62,6 +78,53 @@ jobs:
       - name: Pull LFS test data
         run: git lfs pull --include="test_data/"
 
+      - name: Resolve runner storage root
+        if: vars.RUNNER_STORAGE_ROOT != ''
+        run: echo "RUNNER_STORAGE_ROOT=${{ vars.RUNNER_STORAGE_ROOT }}" >> "$GITHUB_ENV"
+
+      - name: Resolve local datasets root
+        run: echo "RUNNER_LOCAL_DATASETS_ROOT=${{ vars.RUNNER_LOCAL_DATASETS_ROOT || '$HOME/.cache/cuvslam' }}" >> "$GITHUB_ENV"
+
+      - name: Build CI tools image
+        env:
+          AWS_CLI_PUBLIC_KEY: ${{ vars.AWS_CLI_PUBLIC_KEY }}
+        run: |
+          keyfile="$RUNNER_TEMP/aws-cli-public-key.asc"
+          if [ -z "${AWS_CLI_PUBLIC_KEY:-}" ]; then
+            echo "AWS_CLI_PUBLIC_KEY repository variable is not configured" >&2
+            exit 1
+          fi
+          printf '%s\n' "$AWS_CLI_PUBLIC_KEY" > "$keyfile"
+          DOCKER_BUILDKIT=1 docker build -f scripts/Dockerfile.ci . --network host --tag cuvslam-ci:local \
+            --secret id=aws_cli_public_key,src="$keyfile"
+
+      - name: Verify eval prerequisites
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_S3_RO_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_S3_RO_SECRET_ACCESS_KEY }}
+        run: |
+          docker run --rm --network host \
+            -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_DEFAULT_REGION -e S3_DATASETS_BUCKET \
+            -e RUNNER_STORAGE_ROOT -e RUNNER_LOCAL_DATASETS_ROOT \
+            -v "$(pwd):/cuvslam:ro" \
+            -v "$RUNNER_LOCAL_DATASETS_ROOT:$RUNNER_LOCAL_DATASETS_ROOT" \
+            -w /cuvslam \
+            cuvslam-ci:local ./scripts/check_eval_prerequisites.sh
+
+      - name: Stage eval datasets
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_S3_RO_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_S3_RO_SECRET_ACCESS_KEY }}
+        run: |
+          mkdir -p "$RUNNER_LOCAL_DATASETS_ROOT"
+          docker run --rm --network host \
+            -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_DEFAULT_REGION -e S3_DATASETS_BUCKET \
+            -e RUNNER_LOCAL_DATASETS_ROOT \
+            -v "$(pwd):/cuvslam:ro" \
+            -v "$RUNNER_LOCAL_DATASETS_ROOT:$RUNNER_LOCAL_DATASETS_ROOT" \
+            -w /cuvslam \
+            cuvslam-ci:local ./scripts/stage_eval_datasets.sh
+
       - name: Build
         run: ./scripts/build_cuvslam_in_docker.sh Release ./output
 
@@ -70,6 +133,14 @@ jobs:
 
       - name: Run Python tests
         run: ./scripts/test_pycuvslam_in_docker.sh ./output
+
+      - name: Run cuVSLAM evaluation
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_S3_RO_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_S3_RO_SECRET_ACCESS_KEY }}
+        run: |
+          RUN_ID="pr-${{ github.event.pull_request.number }}" \
+          ./scripts/eval_cuvslam_in_docker.sh ./output
 
       - name: Build documentation
         run: |
@@ -108,6 +179,27 @@ jobs:
           path: |
             output/cpp-test-results.xml
             output/test-summary.txt
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload KPI results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.EVAL_KPIS_ARTIFACT }}
+          path: |
+            output/eval/kpi_*.json
+            output/eval/kpi_*.json.table
+            output/eval/kpi_*.json.drift
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload eval HTML report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.EVAL_REPORT_ARTIFACT }}
+          path: output/eval/stats/
           retention-days: 30
           if-no-files-found: warn
 
@@ -221,7 +313,7 @@ jobs:
       - name: Download all test summaries
         uses: actions/download-artifact@v8
         with:
-          pattern: test-results-*
+          pattern: '{test-results-*,${{ env.EVAL_KPIS_ARTIFACT }}}'
           path: results
 
       - name: Build combined report
@@ -240,7 +332,6 @@ jobs:
             done
             echo ""
 
-            # Collect failed test details
             has_failures=false
             for f in results/*/test-summary.txt; do
               [ -f "$f" ] || continue
@@ -265,6 +356,19 @@ jobs:
                 done < "$f"
               done
               echo "</details>"
+            fi
+
+            KPI_TABLE=$(find results -name 'kpi_*.json.table' 2>/dev/null | head -1)
+            if [ -f "$KPI_TABLE" ]; then
+              echo ""
+              echo "## cuVSLAM Evaluation KPIs"
+              echo ""
+              awk -v slug="$EVAL_CONFIG" '
+                NR==1 { print "| Config " $0; next }
+                NR==2 { print "|--------" $0; next }
+                { print "| " slug " " $0 }
+              ' "$KPI_TABLE"
+              echo ""
             fi
           } > report.md
           cat report.md

@@ -16,6 +16,10 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  EVAL_KPIS_ARTIFACT: eval-kpis
+  EVAL_REPORT_ARTIFACT: eval-html-report
+  AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION }}
+  S3_DATASETS_BUCKET: ${{ vars.S3_DATASETS_BUCKET }}
 
 jobs:
   check-changes:
@@ -53,15 +57,15 @@ jobs:
       matrix:
         include:
           # x86_64 configs (CUDA/Ubuntu controlled by Docker build args)
-          - { name: "x86_64 / cuda-12.6 / ubuntu-22.04", runner: '["gpu"]', cuda: "12.6.3", ubuntu: "22.04", archs: "75;80;86;89;90", platform: "x86_64", wheel: true }
-          - { name: "x86_64 / cuda-12.6 / ubuntu-24.04", runner: '["gpu"]', cuda: "12.6.3", ubuntu: "24.04", archs: "75;80;86;89;90", platform: "x86_64", wheel: true }
-          - { name: "x86_64 / cuda-13.2 / ubuntu-22.04", runner: '["gpu"]', cuda: "13.2.0", ubuntu: "22.04", archs: "75;80;86;89;100;120;121", platform: "x86_64", wheel: true }
-          - { name: "x86_64 / cuda-13.2 / ubuntu-24.04", runner: '["gpu"]', cuda: "13.2.0", ubuntu: "24.04", archs: "75;80;86;89;100;120;121", platform: "x86_64", wheel: true }
+          - { name: "x86_64 / cuda-12.6 / ubuntu-22.04", runner: '["gpu"]', cuda: "12.6.3", ubuntu: "22.04", archs: "75;80;86;89;90", platform: "x86_64", wheel: true, eval: true }
+          - { name: "x86_64 / cuda-12.6 / ubuntu-24.04", runner: '["gpu"]', cuda: "12.6.3", ubuntu: "24.04", archs: "75;80;86;89;90", platform: "x86_64", wheel: true, eval: true }
+          - { name: "x86_64 / cuda-13.2 / ubuntu-22.04", runner: '["gpu"]', cuda: "13.2.0", ubuntu: "22.04", archs: "75;80;86;89;100;120;121", platform: "x86_64", wheel: true, eval: true }
+          - { name: "x86_64 / cuda-13.2 / ubuntu-24.04", runner: '["gpu"]', cuda: "13.2.0", ubuntu: "24.04", archs: "75;80;86;89;100;120;121", platform: "x86_64", wheel: true, eval: true }
 
           # Jetson configs (CUDA version must match host JetPack driver)
           # Orin uses base_image override; cuda value is not used for the Docker base but kept for artifact naming
-          - { name: "aarch64 / Orin (JP 6.1)",  runner: '["jetson-orin"]', cuda: "12.6.3", ubuntu: "22.04", archs: "87",  platform: "orin",  wheel: false, base_image: "nvcr.io/nvidia/12.6.11-devel:12.6.11-devel-aarch64-ubuntu22.04" }
-          - { name: "aarch64 / Thor (JP 7.1)",  runner: '["jetson-thor"]', cuda: "13.0.1", ubuntu: "24.04", archs: "110", platform: "thor",  wheel: false }
+          - { name: "aarch64 / Orin (JP 6.1)",  runner: '["jetson-orin"]', cuda: "12.6.3", ubuntu: "22.04", archs: "87",  platform: "orin",  wheel: false, eval: true, base_image: "nvcr.io/nvidia/12.6.11-devel:12.6.11-devel-aarch64-ubuntu22.04" }
+          - { name: "aarch64 / Thor (JP 7.1)",  runner: '["jetson-thor"]', cuda: "13.0.1", ubuntu: "24.04", archs: "110", platform: "thor",  wheel: false, eval: true }
     steps:
       - name: Verify GPU
         run: nvidia-smi
@@ -72,6 +76,57 @@ jobs:
 
       - name: Pull LFS test data
         run: git lfs pull --include="test_data/"
+
+      - name: Resolve runner storage root
+        if: matrix.eval && vars.RUNNER_STORAGE_ROOT != ''
+        run: echo "RUNNER_STORAGE_ROOT=${{ vars.RUNNER_STORAGE_ROOT }}" >> "$GITHUB_ENV"
+
+      - name: Resolve local datasets root
+        if: matrix.eval
+        run: echo "RUNNER_LOCAL_DATASETS_ROOT=${{ vars.RUNNER_LOCAL_DATASETS_ROOT || '$HOME/.cache/cuvslam' }}" >> "$GITHUB_ENV"
+
+      - name: Build CI tools image
+        if: matrix.eval
+        env:
+          AWS_CLI_PUBLIC_KEY: ${{ vars.AWS_CLI_PUBLIC_KEY }}
+        run: |
+          keyfile="$RUNNER_TEMP/aws-cli-public-key.asc"
+          if [ -z "${AWS_CLI_PUBLIC_KEY:-}" ]; then
+            echo "AWS_CLI_PUBLIC_KEY repository variable is not configured" >&2
+            exit 1
+          fi
+          printf '%s\n' "$AWS_CLI_PUBLIC_KEY" > "$keyfile"
+          DOCKER_BUILDKIT=1 docker build -f scripts/Dockerfile.ci . --network host --tag cuvslam-ci:local \
+            --secret id=aws_cli_public_key,src="$keyfile"
+
+      - name: Verify eval prerequisites
+        if: matrix.eval
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_S3_RO_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_S3_RO_SECRET_ACCESS_KEY }}
+        run: |
+          docker run --rm --network host \
+            -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_DEFAULT_REGION -e S3_DATASETS_BUCKET \
+            -e RUNNER_STORAGE_ROOT -e RUNNER_LOCAL_DATASETS_ROOT \
+            -v "$(pwd):/cuvslam:ro" \
+            -v "$RUNNER_LOCAL_DATASETS_ROOT:$RUNNER_LOCAL_DATASETS_ROOT" \
+            -w /cuvslam \
+            cuvslam-ci:local ./scripts/check_eval_prerequisites.sh
+
+      - name: Stage eval datasets
+        if: matrix.eval
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_S3_RO_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_S3_RO_SECRET_ACCESS_KEY }}
+        run: |
+          mkdir -p "$RUNNER_LOCAL_DATASETS_ROOT"
+          docker run --rm --network host \
+            -e AWS_ACCESS_KEY_ID -e AWS_SECRET_ACCESS_KEY -e AWS_DEFAULT_REGION -e S3_DATASETS_BUCKET \
+            -e RUNNER_LOCAL_DATASETS_ROOT \
+            -v "$(pwd):/cuvslam:ro" \
+            -v "$RUNNER_LOCAL_DATASETS_ROOT:$RUNNER_LOCAL_DATASETS_ROOT" \
+            -w /cuvslam \
+            cuvslam-ci:local ./scripts/stage_eval_datasets.sh
 
       - name: Build C++ libraries
         run: |
@@ -93,6 +148,37 @@ jobs:
 
       - name: Run Python tests
         run: ./scripts/test_pycuvslam_in_docker.sh ./output
+
+      - name: Run cuVSLAM evaluation
+        if: matrix.eval
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_S3_RO_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_S3_RO_SECRET_ACCESS_KEY }}
+        run: |
+          RUN_ID="$(date -u +%Y-%m-%d)" \
+          KPI_HISTORY_DIR="${RUNNER_STORAGE_ROOT:?RUNNER_STORAGE_ROOT must be set}/cuvslam-ci/kpi-history/${{ matrix.platform }}-cuda${{ matrix.cuda }}-ubuntu${{ matrix.ubuntu }}" \
+          ./scripts/eval_cuvslam_in_docker.sh ./output
+
+      - name: Upload KPI results
+        if: always() && matrix.eval
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.EVAL_KPIS_ARTIFACT }}-${{ matrix.platform }}-cuda${{ matrix.cuda }}-ubuntu${{ matrix.ubuntu }}
+          path: |
+            output/eval/kpi_*.json
+            output/eval/kpi_*.json.table
+            output/eval/kpi_*.json.drift
+          retention-days: 1
+          if-no-files-found: warn
+
+      - name: Upload eval HTML report
+        if: always() && matrix.eval
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ env.EVAL_REPORT_ARTIFACT }}-${{ matrix.platform }}-cuda${{ matrix.cuda }}-ubuntu${{ matrix.ubuntu }}
+          path: output/eval/stats/
+          retention-days: 1
+          if-no-files-found: warn
 
       - name: Upload C++ test results
         if: always()
@@ -175,7 +261,7 @@ jobs:
           for dir in artifacts/test-results-cpp-*; do
             [ -d "$dir" ] || continue
             CONFIG=$(basename "$dir" | sed 's/test-results-cpp-//' | sed 's/-/ \/ /g' | sed 's/cuda/cuda-/' | sed 's/ubuntu/ubuntu-/')
-            XML=$(find "$dir" -name "*.xml" | head -1)
+              XML=$(find "$dir" -name "*.xml" | head -1 || true)
             if [ -f "$XML" ]; then
               TESTS=$(grep -oP 'tests="\K[0-9]+' "$XML" | head -1)
               FAILURES=$(grep -oP 'failures="\K[0-9]+' "$XML" | head -1)
@@ -195,6 +281,50 @@ jobs:
 
           echo "" >> release-notes.md
           echo "Commit: ${{ github.sha }}" >> release-notes.md
+
+          # Merge every config's KPI table into one, prefixed with a Config column
+          # (platform-cuda-ubuntu slug) so rows stay distinct and reports never overwrite.
+          kpi_emit_head=1
+          for kpidir in artifacts/${EVAL_KPIS_ARTIFACT}-*; do
+            [ -d "$kpidir" ] || continue
+            CONFIG=${kpidir#artifacts/${EVAL_KPIS_ARTIFACT}-}
+            KPI_TABLE=$(find "$kpidir" -name "kpi_*.json.table" 2>/dev/null | head -1 || true)
+            [ -f "$KPI_TABLE" ] || continue
+            awk -v slug="$CONFIG" -v emit_head="$kpi_emit_head" '
+              NR==1 { if (emit_head=="1") print "| Config " $0; next }
+              NR==2 { if (emit_head=="1") print "|--------" $0; next }
+              { print "| " slug " " $0 }
+            ' "$KPI_TABLE" >> kpi-combined.table
+            kpi_emit_head=""
+            cp "$KPI_TABLE" "release-assets/${CONFIG}-$(basename "$KPI_TABLE")"
+            KPI_JSON=$(find "$kpidir" -name "kpi_*.json" ! -name "*.table" 2>/dev/null | head -1 || true)
+            [ -f "$KPI_JSON" ] && cp "$KPI_JSON" "release-assets/${CONFIG}-$(basename "$KPI_JSON")"
+          done
+
+          if [ -f kpi-combined.table ]; then
+            {
+              echo ""
+              echo "## cuVSLAM Evaluation KPIs"
+              echo ""
+              cat kpi-combined.table
+              echo ""
+            } >> release-notes.md
+            cp kpi-combined.table "release-assets/kpi-combined.table"
+          fi
+
+          for repdir in artifacts/${EVAL_REPORT_ARTIFACT}-*; do
+            [ -d "$repdir" ] || continue
+            CONFIG=${repdir#artifacts/${EVAL_REPORT_ARTIFACT}-}
+            find "$repdir" -name "report_*.html" 2>/dev/null | grep -q . || continue
+            tar czf "release-assets/eval-report-${CONFIG}.tar.gz" -C "$repdir" .
+            {
+              echo ""
+              echo "## cuVSLAM Evaluation Report — ${CONFIG}"
+              echo ""
+              echo "[Download the full HTML report (trajectory plots + per-sequence views)](https://github.com/${{ github.repository }}/releases/download/nightly-${DATE}/eval-report-${CONFIG}.tar.gz)"
+              echo ""
+            } >> release-notes.md
+          done
 
           for dir in artifacts/cuvslam-*; do
             [ -d "$dir" ] || continue
