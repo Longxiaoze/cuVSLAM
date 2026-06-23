@@ -53,7 +53,8 @@ class Processing(Protocol):
 
 class DatasetReader:
     def __init__(self, dataset_path: str, stereo_edex: Optional[str] = None,
-                 num_loops: int = 0, repeat_type: str = "none"):
+                 num_loops: int = 0, repeat_type: str = "none",
+                 gt_path: Optional[str] = None):
         repeat_type = (repeat_type or "none").lower()
         if repeat_type not in ("none", "repeat", "shuttle"):
             raise ValueError(f"Invalid repeat_type {repeat_type!r}; expected none|repeat|shuttle")
@@ -73,9 +74,14 @@ class DatasetReader:
         self.gt_from_shuttle = False
         self.gt_transforms = []
 
-        gt_path = os.path.join(dataset_path, 'gt.txt')
-        if os.path.exists(gt_path):
-            with open(gt_path, 'r') as f:
+        if gt_path is None:
+            self.gt_path = os.path.join(dataset_path, 'gt.txt')
+        elif os.path.isabs(gt_path):
+            self.gt_path = gt_path
+        else:
+            self.gt_path = os.path.join(dataset_path, gt_path)
+        if os.path.exists(self.gt_path):
+            with open(self.gt_path, 'r') as f:
                 for line in f:
                     transform_12 = [float(value) for value in line.split()]
                     assert len(transform_12) == 12, "Each line should have 12 float values"

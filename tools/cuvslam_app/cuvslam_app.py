@@ -47,6 +47,7 @@ from video_reader import VideoReader
 from visualizer import RerunVisualizer, plot_trajectory
 from metrics import calculate_sequence_errors
 from generate_report import generate_report, get_fps, save_stats_to_json
+from kitti_benchmark import export_kitti_benchmark_artifacts
 
 
 @dataclass
@@ -60,7 +61,7 @@ class Stat:
     gt_av_rotation_error: float = 0
     gt_n_error_segments: int = 0
     gt_simple_error: float = 0
-    num_tracking_losts: int = -1
+    num_tracking_losts: int = 0
     odometry_mode: str = ""
     # per-instance list of dicts {length, t_pct, r_deg_per_m}, populated by
     # metrics.calculate_sequence_errors in the segment branch.
@@ -93,7 +94,7 @@ class Tracker:
 
         # Configure SLAM if needed
         self.slam_cfg = None
-        if args.use_slam:
+        if getattr(args, 'use_slam', False):
             self.odom_cfg.enable_observations_export = True
             self.odom_cfg.enable_landmarks_export = True
             self.slam_cfg = vslam.Tracker.SlamConfig()
@@ -189,12 +190,15 @@ class Tracker:
         timestamp = max(timestamps)
         self.start_time = time.perf_counter()
         odom_pose, slam_pose = self.tracker.track(timestamp, images, masks, depths)
+        odom_world_from_rig = odom_pose.world_from_rig.pose if odom_pose.world_from_rig else None
+        if odom_world_from_rig is None:
+            self.stat.num_tracking_losts += 1
 
         # Use SLAM pose if available, otherwise use odometry pose
         if slam_pose:
             self.world_from_rig[frame_id] = slam_pose
-        else:
-            self.world_from_rig[frame_id] = odom_pose.world_from_rig.pose if odom_pose.world_from_rig else None
+        elif odom_world_from_rig is not None:
+            self.world_from_rig[frame_id] = odom_world_from_rig
 
         self.end_time = time.perf_counter()
         self.stat.tracking_time += self.end_time - self.start_time
@@ -218,7 +222,7 @@ class Tracker:
                 for lc in last_loop_closures:
                     self.loop_closures[lc.timestamp_ns] = lc.pose
 
-        if self.visualizer and odom_pose.world_from_rig:
+        if self.visualizer and odom_world_from_rig:
             gravity = None
             if self.odom_cfg.odometry_mode == vslam.Tracker.OdometryMode.Inertial:
                 # Gravity estimation requires collecting sufficient number of keyframes
@@ -234,7 +238,7 @@ class Tracker:
             self.visualizer.visualize_frame(
                 frame_id=frame_id,
                 images=images,
-                odom_pose=odom_pose.world_from_rig.pose,
+                odom_pose=odom_world_from_rig,
                 slam_pose=slam_pose,
                 observations_0=observations_0,
                 last_landmarks=landmarks,
@@ -271,7 +275,8 @@ class Tracker:
             slam_poses = self.tracker.get_all_slam_poses()
             if slam_poses:
                 for pose in slam_poses:
-                    self.world_from_rig[self.frame_id_from_ts[pose.timestamp_ns]] = pose.pose
+                    frame_id = self.frame_id_from_ts[pose.timestamp_ns]
+                    self.world_from_rig[frame_id] = pose.pose
 
         self.stat.n_frames = len(self.world_from_rig)
         self.stat.average_fps = get_fps(self.stat.tracking_time, self.stat.n_frames)
@@ -325,6 +330,69 @@ def save_result_to_edex(world_from_rig: Dict[int, vslam.Pose],
     np.save(output_data_file, output_data)
 
 
+def _warn_unsupported_config_fields(config: Dict[str, Any]) -> None:
+    if config.get("write_cache"):
+        warnings.warn(
+            "Ignoring reporter config field write_cache=true; EDEX result cache export is not supported.",
+            stacklevel=2,
+        )
+    if config.get("use_icp_scaling"):
+        warnings.warn(
+            "Ignoring reporter config field use_icp_scaling=true; ICP scale correction is not supported.",
+            stacklevel=2,
+        )
+    if config.get("use_cuda"):
+        warnings.warn(
+            "Ignoring reporter config field use_cuda=true; use --use_gpu for the Python API.",
+            stacklevel=2,
+        )
+    if "edex_folder" in config:
+        warnings.warn(
+            "Ignoring unsupported legacy config field edex_folder; use dataset_folder + sequence_folder.",
+            stacklevel=2,
+        )
+
+
+def _warn_unsupported_sequence_fields(sequence: Dict[str, Any]) -> None:
+    if sequence.get("use_gt_scale"):
+        warnings.warn(
+            f"Ignoring use_gt_scale for {sequence.get('sequence_title', '<unnamed>')}; not supported.",
+            stacklevel=2,
+        )
+    if sequence.get("start_end_residual"):
+        warnings.warn(
+            f"Ignoring start_end_residual for {sequence.get('sequence_title', '<unnamed>')}; not supported.",
+            stacklevel=2,
+        )
+    if sequence.get("precompute_2d_tracks"):
+        warnings.warn(
+            f"Ignoring precompute_2d_tracks for {sequence.get('sequence_title', '<unnamed>')}.",
+            stacklevel=2,
+        )
+    if sequence.get("precompute_key_frames"):
+        warnings.warn(
+            f"Ignoring precompute_key_frames for {sequence.get('sequence_title', '<unnamed>')}.",
+            stacklevel=2,
+        )
+    if "multicam_mode" in sequence or "multicam_setup" in sequence:
+        warnings.warn(
+            "Ignoring per-sequence multicam_mode/multicam_setup; use CLI --multicam_mode.",
+            stacklevel=2,
+        )
+
+
+def _resolve_sequence_gt_path(sequence: Dict[str, Any]) -> Optional[str]:
+    gt_file_path = sequence.get("gt_file_path")
+    if not gt_file_path:
+        if gt_file_path == "":
+            warnings.warn(
+                f"Ignoring empty gt_file_path for {sequence.get('sequence_title', '<unnamed>')}.",
+                stacklevel=2,
+            )
+        return None
+    return gt_file_path
+
+
 def track(args: argparse.Namespace,
           refined_focal: Optional[tuple[float, float]] = None,
           refined_principal: Optional[tuple[float, float]] = None) -> TrackerResults:
@@ -345,13 +413,16 @@ def track(args: argparse.Namespace,
 
     if args.dataset.endswith('.mp4'):
         dataset = VideoReader(args.dataset, stereo_edex=args.config_path,
-                              num_loops=args.num_loops, repeat_type=args.repeat_type)
+                              num_loops=args.num_loops, repeat_type=args.repeat_type,
+                              gt_path=getattr(args, 'gt_path', None))
     else:
         rgbd_mode = args.odometry_mode == vslam.Tracker.OdometryMode.RGBD
         dataset = EdexReader(args.dataset, stereo_edex=args.config_path,
                              num_loops=args.num_loops, rgbd_mode=rgbd_mode,
                              repeat_type=args.repeat_type,
-                             cache_uncompressed=getattr(args, 'cache_uncompressed', False))
+                             cache_uncompressed=getattr(args, 'cache_uncompressed', False),
+                             gt_path=getattr(args, 'gt_path', None),
+                             camera_ids=getattr(args, 'camera_ids', None))
 
     tracker_results = TrackerResults()
     if args.sequence_title:
@@ -410,6 +481,15 @@ def track(args: argparse.Namespace,
         plot_trajectory_path,
         dataset.gt_from_shuttle)
 
+    export_kitti_benchmark_artifacts(
+        tracker_results.world_from_rig,
+        tracker_results.loop_closures,
+        args.output_dir,
+        args.sequence_title,
+        use_slam=getattr(args, "use_slam", False),
+        suffix=suffix,
+    )
+
     if args.save_output_tracker_data:
         if not args.output_dir:
             print("No output directory provided, skipping output tracker data saving")
@@ -431,13 +511,20 @@ def track(args: argparse.Namespace,
 
 def process_sequence(sequence, args, CUVSLAM_DATASETS, dataset_folder):
     """Process a single sequence."""
+    if 'sequence_folder' not in sequence:
+        raise ValueError(
+            f"Unsupported sequence config without sequence_folder: {sequence.get('sequence_title', '<unnamed>')}")
 
+    _warn_unsupported_sequence_fields(sequence)
     args_copy = copy.deepcopy(args)
-    args_copy.sequence_title = sequence['sequence_title']
+    args_copy.sequence_title = sequence.get('sequence_title', '<unnamed>')
     args_copy.dataset = os.path.join(CUVSLAM_DATASETS, dataset_folder, sequence['sequence_folder'])
+    args_copy.config_path = os.path.join(args_copy.dataset, sequence.get('edex_file', 'stereo.edex'))
+    args_copy.gt_path = _resolve_sequence_gt_path(sequence)
+    args_copy.camera_ids = sequence.get('cameras')
     args_copy.use_slam = 'use_slam' in sequence and sequence['use_slam']
     if 'repeat_type' in sequence:
-        args_copy.repeat_type = sequence['repeat_type']
+        args_copy.repeat_type = (sequence['repeat_type'] or 'none').lower()
     if 'sequence_num_repeats' in sequence:
         args_copy.num_loops = sequence['sequence_num_repeats']
 
@@ -461,6 +548,9 @@ def run_parallel_tracking(json_data, args, CUVSLAM_DATASETS, max_workers=None):
         print(f"Using max_workers={max_workers} (user specified)")
 
     stats = []
+    if 'dataset_folder' not in json_data:
+        raise ValueError("Only reporter configs with dataset_folder are supported")
+    _warn_unsupported_config_fields(json_data)
 
     with ProcessPoolExecutor(max_workers=max_workers) as executor:
         future_to_title = {}
@@ -507,7 +597,7 @@ if __name__ == "__main__":
                         help='Enable plot visualization of tracking results')
     parser.add_argument('--num_loops', type=int,
                         help='Number of repeats (Repeat) or shuttle cycles (Shuttle)', default=0)
-    parser.add_argument('--repeat_type', type=lambda s: s.lower(),
+    parser.add_argument('--repeat_type', type=str.lower,
                         choices=['none', 'repeat', 'shuttle'],
                         help='Replay mode: none (single pass), repeat (forward N times), '
                              'shuttle (N forward+back cycles)', default='none')

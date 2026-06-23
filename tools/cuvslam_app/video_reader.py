@@ -25,8 +25,8 @@ from dataset_reader import DatasetReader, Processing
 class VideoReader(DatasetReader):
 
     def __init__(self, video_path: str, stereo_edex: Optional[str] = None, num_loops: int = 0,
-                 repeat_type: str = "none"):
-        super().__init__(video_path, stereo_edex, num_loops, repeat_type)
+                 repeat_type: str = "none", gt_path: Optional[str] = None):
+        super().__init__(video_path, stereo_edex, num_loops, repeat_type, gt_path=gt_path)
         self.replay_forward = True
         self.buffer = []  # Store frames in memory
 

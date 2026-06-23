@@ -30,22 +30,45 @@ from dataset_reader import DatasetReader, Processing
 class EdexReader(DatasetReader):
     def __init__(self, edex_dir: str, stereo_edex: Optional[str] = None, num_loops: int = 0,
                  rgbd_mode: bool = False, repeat_type: str = "none",
-                 cache_uncompressed: bool = False):
-        super().__init__(edex_dir, stereo_edex, num_loops, repeat_type)
+                 cache_uncompressed: bool = False, gt_path: Optional[str] = None,
+                 camera_ids: Optional[List[int]] = None):
+        super().__init__(edex_dir, stereo_edex, num_loops, repeat_type, gt_path=gt_path)
         self.rgbd_mode = rgbd_mode
         self.cache_uncompressed = cache_uncompressed
         self.rgbd_settings = None
         self.depth_sequence = None
+        self.camera_ids = camera_ids
+        if self.camera_ids:
+            duplicated_camera_ids = sorted({
+                cam_id for cam_id in self.camera_ids
+                if self.camera_ids.count(cam_id) > 1
+            })
+            if duplicated_camera_ids:
+                raise ValueError(f"Duplicate camera_ids are not supported: {duplicated_camera_ids}.")
+        self.camera_id_map = {cam_id: i for i, cam_id in enumerate(camera_ids)} if camera_ids else None
 
-        with open(os.path.join(edex_dir, 'stereo.edex'), 'r') as f:
+        stereo_edex_path = stereo_edex if stereo_edex else os.path.join(edex_dir, 'stereo.edex')
+        with open(stereo_edex_path, 'r') as f:
             # Load configuration JSON
             config_data = json.load(f)
             rig = self.parse_config(config_data)
+            if self.camera_ids:
+                n_cameras = len(rig.cameras)
+                invalid_camera_ids = [
+                    cam_id for cam_id in self.camera_ids
+                    if cam_id < 0 or cam_id >= n_cameras
+                ]
+                if invalid_camera_ids:
+                    raise ValueError(
+                        f"Invalid camera_ids {invalid_camera_ids}; stereo.edex defines {n_cameras} cameras."
+                    )
+                rig.cameras = [rig.cameras[cam_id] for cam_id in self.camera_ids]
 
             # Parse RGBD settings if in RGBD mode
             if self.rgbd_mode:
                 try:
                     self.rgbd_settings = self._parse_rgbd_settings(config_data)
+                    self._remap_rgbd_settings_for_filtered_cameras()
                 except ValueError as e:
                     raise ValueError(f"Failed to initialize RGBD mode: {str(e)}") from e
 
@@ -104,6 +127,8 @@ class EdexReader(DatasetReader):
                 frame_metadata_file = metadata['frame_metadata']
                 self.frames = self.load_frame_metadata_edex(
                     os.path.join(edex_dir, frame_metadata_file))
+                if self.camera_id_map is not None:
+                    self._filter_and_remap_frame_cameras()
             elif 'sequence' in metadata:
                 sequence = metadata['sequence']
                 self.frame_id_end, self.frame_id_start = config_data[0]['frame_end'], config_data[0]['frame_start']
@@ -112,20 +137,30 @@ class EdexReader(DatasetReader):
                     self.frames[frame_id] = {"cams": [], "cams_max_ts": 0}
                     ts = self.interval_ns * frame_id
                     for cam_id, image_paths in enumerate(sequence):
+                        if self.camera_id_map is not None and cam_id not in self.camera_id_map:
+                            continue
+                        output_cam_id = self.camera_id_map[cam_id] if self.camera_id_map is not None else cam_id
                         self.frames[frame_id]["cams"].append({
-                            'id': cam_id,
+                            'id': output_cam_id,
                             'filename': self.replace_last_digits(image_paths[0], i),
                             'timestamp': ts
                         })
                         self.frames[frame_id]["cams_max_ts"] = ts
                         self.frames[frame_id]["cams_min_ts"] = ts
+                    if self.camera_id_map is not None and not self.frames[frame_id]["cams"]:
+                        raise ValueError(
+                            f"Frame {frame_id} has no cameras after applying camera_ids {self.camera_ids}."
+                        )
 
                     # Add depth data if in RGBD mode
                     if self.rgbd_mode and self.depth_sequence:
                         self.frames[frame_id]["depth"] = []
                         for depth_id, depth_paths in enumerate(self.depth_sequence):
+                            if self.camera_id_map is not None and depth_id not in self.camera_id_map:
+                                continue
+                            output_depth_id = self.camera_id_map[depth_id] if self.camera_id_map is not None else depth_id
                             self.frames[frame_id]["depth"].append({
-                                'id': depth_id,
+                                'id': output_depth_id,
                                 'filename': self.replace_last_digits(depth_paths[0], i),
                                 'timestamp': ts
                             })
@@ -154,6 +189,40 @@ class EdexReader(DatasetReader):
             # Check for tar archives
             self.tar_archives = {}
             self._detect_tar_archives()
+
+    def _remap_rgbd_settings_for_filtered_cameras(self) -> None:
+        """Keep RGBD depth camera id in the same camera-id space as the filtered rig."""
+        if self.camera_id_map is None or self.rgbd_settings is None:
+            return
+
+        original_depth_camera_id = self.rgbd_settings.depth_camera_id
+        if original_depth_camera_id not in self.camera_id_map:
+            raise ValueError(
+                f"RGBD depth_camera_id {original_depth_camera_id} is not included in camera_ids {self.camera_ids}."
+            )
+        self.rgbd_settings.depth_camera_id = self.camera_id_map[original_depth_camera_id]
+
+    def _filter_and_remap_frame_cameras(self):
+        """Keep only requested cameras from frame metadata and remap them to contiguous ids."""
+        assert self.camera_id_map is not None
+        for frame_id, frame_data in self.frames.items():
+            frame_data["cams"] = [
+                {**cam_data, "id": self.camera_id_map[cam_data["id"]]}
+                for cam_data in frame_data["cams"]
+                if cam_data["id"] in self.camera_id_map
+            ]
+            if not frame_data["cams"]:
+                raise ValueError(
+                    f"Frame {frame_id} has no cameras after applying camera_ids {self.camera_ids}."
+                )
+            frame_data["cams_max_ts"] = max(cam_data["timestamp"] for cam_data in frame_data["cams"])
+            frame_data["cams_min_ts"] = min(cam_data["timestamp"] for cam_data in frame_data["cams"])
+            if "depth" in frame_data:
+                frame_data["depth"] = [
+                    {**depth_data, "id": self.camera_id_map[depth_data["id"]]}
+                    for depth_data in frame_data["depth"]
+                    if depth_data["id"] in self.camera_id_map
+                ]
 
     def _detect_tar_archives(self):
         """Detect and cache tar archives for image folders.
