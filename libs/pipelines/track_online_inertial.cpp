@@ -700,7 +700,12 @@ bool SolverSfMInertial::solveNextFrame(int64_t time_ns, const sof::FrameState& f
     is_first_run = false;
   }
 
-  if (frameState == sof::FrameState::Key) {
+  // IMU-only fallback poses bridge short visual outages, but they are not visual
+  // measurements. Committing them as keyframes can poison the map with anchors
+  // that have no reliable visual pose constraint, which makes later IMU-only
+  // propagation jump from a bad keyframe state. Keep the initial no-PnP bootstrap
+  // path intact; it is needed before the map has enough landmarks for PnP.
+  if (frameState == sof::FrameState::Key && !integrated) {
     auto tr_landmarks = triangulator.triangulate(world_from_rig, obs_vector_);
 
     State state = {rig_from_w, !lost ? prev_pose.velocity : last_valid_pose.velocity,
