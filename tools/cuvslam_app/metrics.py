@@ -220,7 +220,8 @@ def calculate_sequence_errors(
     for frame_id_pose, frame_id_gt in frame_mapping.items():
         if frame_id_gt >= len(gt_transforms):
             continue
-        pose = poses[frame_id_pose]
+        # Lost/filtered frames aren't in `poses`; .get lets the None guard skip them.
+        pose = poses.get(frame_id_pose)
         gt_transform = gt_transforms[frame_id_gt]
         if pose is None or gt_transform is None:
             continue
