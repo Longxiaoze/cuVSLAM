@@ -17,6 +17,8 @@
 
 #include "odometry/multi_visual_odometry_base.h"
 
+#include <algorithm>
+
 #include "math/twist.h"
 #include "pipelines/feature_predictor.h"
 #include "sof/sof_create.h"
@@ -31,10 +33,7 @@ MultiVisualOdometryBase::MultiVisualOdometryBase(const camera::Rig& rig, const c
       settings_(settings),
       map_(20),
       feature_predictor_(std::make_shared<pipelines::FeaturePredictor>(map_, rig)) {
-  observations_.reserve(rig.num_cameras);
-  for (CameraId cam_id = 0; cam_id < rig.num_cameras; ++cam_id) {
-    observations_.try_emplace(cam_id);
-  }
+  observations_.resize(rig.num_cameras);
 
   sof::Implementation implementation = sof::Implementation::kCPU;
   if (use_gpu) {
@@ -60,8 +59,11 @@ bool MultiVisualOdometryBase::track(const Sources& curr_sources, [[maybe_unused]
                                     sof::Images& curr_images, const sof::Images& prev_images,
                                     const Sources& masks_sources, Isometry3T& delta, Matrix6T& static_info_exp,
                                     const TrackPerFrameSettings& per_frame_setting) {
-  assert(depth_sources.empty());
-  if (curr_images.empty()) {
+  assert(std::none_of(depth_sources.begin(), depth_sources.end(),
+                      [](const ImageSource& source) { return source.data != nullptr; }));
+  const auto first_image = std::find_if(curr_images.begin(), curr_images.end(),
+                                        [](const sof::ImageContextPtr& image) { return image != nullptr; });
+  if (first_image == curr_images.end()) {
     reset();
     delta = Isometry3T::Identity();
     static_info_exp.setZero();
@@ -69,7 +71,7 @@ bool MultiVisualOdometryBase::track(const Sources& curr_sources, [[maybe_unused]
     return false;
   }
   TRACE_EVENT ev = profiler_domain_.trace_event("MultiVisualOdometryBase::track()", profiler_color_);
-  const int64_t timestamp = curr_images.begin()->second->get_image_meta().timestamp;  // current frame timestamp
+  const int64_t timestamp = (*first_image)->get_image_meta().timestamp;  // current frame timestamp
   Isometry3T predicted_world_from_rig = prev_world_from_rig_;
   pipelines::ISFMSolver& solver = get_solver();
 
@@ -79,7 +81,7 @@ bool MultiVisualOdometryBase::track(const Sources& curr_sources, [[maybe_unused]
 
   sof::FrameState frame_type;
   for (auto& cam_observations : observations_) {
-    cam_observations.second.clear();
+    cam_observations.clear();
   }
 
   const bool track_result =

@@ -656,23 +656,24 @@ PoseEstimate Odometry::Track(const ImageSet& images, const ImageSet& masks, cons
   Metas& image_metas = impl->image_metas;
   sof::Images& cuvslam_images_ptrs = impl->curr_image_ptrs;
 
-  image_sources.clear();
-  masks_sources.clear();
-  depth_sources.clear();
-  image_metas.clear();
-  cuvslam_images_ptrs.clear();
-  image_sources.reserve(impl->rig.num_cameras);
-  masks_sources.reserve(impl->rig.num_cameras);
-  depth_sources.reserve(impl->rig.num_cameras);
-  image_metas.reserve(impl->rig.num_cameras);
-  cuvslam_images_ptrs.reserve(impl->rig.num_cameras);
+  const size_t num_cameras = static_cast<size_t>(impl->rig.num_cameras);
+  image_sources.assign(num_cameras, {});
+  masks_sources.assign(num_cameras, {});
+  depth_sources.assign(num_cameras, {});
+  image_metas.assign(num_cameras, {});
+  cuvslam_images_ptrs.assign(num_cameras, nullptr);
+  if (impl->prev_image_ptrs.size() != num_cameras) {
+    impl->prev_image_ptrs.assign(num_cameras, nullptr);
+  }
   impl->image_contexts.clear();
 
   const FrameId frame_id = impl->frame_id++;
   const int64_t current_time_ns = images[0].timestamp_ns;
   THROW_INVALID_ARG_IF(current_time_ns < impl->last_timestamp_ns, "Timestamps are non-monotonic");
 
-  if (!impl->prev_image_ptrs.empty()) {
+  const bool has_prev_images = std::any_of(impl->prev_image_ptrs.begin(), impl->prev_image_ptrs.end(),
+                                           [](const auto& image) { return image != nullptr; });
+  if (has_prev_images) {
     THROW_INVALID_ARG_IF(current_time_ns <= impl->last_frame_timestamp_ns,
                          "Frame timestamps must be strictly increasing");
     auto current_frame_delta_ns = current_time_ns - impl->last_frame_timestamp_ns;
@@ -726,7 +727,7 @@ PoseEstimate Odometry::Track(const ImageSet& images, const ImageSet& masks, cons
     sof::ImageContextPtr ptr = is_rgbd ? impl->image_manager->acquire_with_depth() : impl->image_manager->acquire();
     THROW_RUNTIME_ERROR_IF(ptr == nullptr, "Failed to acquire image context from image_manager");
     ptr->set_image_meta(meta);
-    cuvslam_images_ptrs.insert({cam_id, ptr});
+    cuvslam_images_ptrs[cam_id] = ptr;
     impl->image_contexts.insert({cam_id, std::static_pointer_cast<Odometry::State::Context>(ptr)});
   }
 
@@ -734,8 +735,10 @@ PoseEstimate Odometry::Track(const ImageSet& images, const ImageSet& masks, cons
   bool result = impl->visual_odometry->track(image_sources, depth_sources, cuvslam_images_ptrs, impl->prev_image_ptrs,
                                              masks_sources, impl->last_delta, static_info_exp, per_frame_setting);
 
-  for (const auto& [cam_id, img] : cuvslam_images_ptrs) {
-    impl->prev_image_ptrs[cam_id] = img;
+  for (CameraId cam_id = 0; cam_id < cuvslam_images_ptrs.size(); ++cam_id) {
+    if (cuvslam_images_ptrs[cam_id] != nullptr) {
+      impl->prev_image_ptrs[cam_id] = cuvslam_images_ptrs[cam_id];
+    }
   }
 
   if (result) {
@@ -991,11 +994,11 @@ public:
 
   void Track(FrameId frame_id, int64_t timestamp_ns, const odom::IVisualOdometry::VOFrameStat& stat,
              const Isometry3T& delta, const sof::Images& images) {
-    sof::Images slam_images;
+    sof::Images slam_images(rig_.num_cameras, nullptr);
     // only pass images for primary cameras; TODO: custom primary cameras
     for (CameraId cam_id : primary_cameras_) {
-      if (images.find(cam_id) != images.end()) {
-        slam_images[cam_id] = images.at(cam_id);
+      if (cam_id < images.size() && images[cam_id] != nullptr) {
+        slam_images[cam_id] = images[cam_id];
       }
     }
     async_slam_->TrackResult(frame_id, timestamp_ns, stat, slam_images, delta);
@@ -1044,9 +1047,11 @@ void Slam::Track(const Odometry::State& state, const Pose* gt_pose) {
   }
 
   // Convert image contexts to sof::Images
-  sof::Images slam_images;
-  slam_images.reserve(impl->primary_cameras_.size());
+  sof::Images slam_images(impl->rig_.num_cameras, nullptr);
   for (CameraId cam_id : impl->primary_cameras_) {
+    if (cam_id >= slam_images.size()) {
+      continue;
+    }
     auto it = state.context.find(cam_id);
     if (it != state.context.end()) {
       slam_images[cam_id] = std::static_pointer_cast<sof::ImageContext>(it->second);
@@ -1124,9 +1129,9 @@ void Slam::LocalizeInMap(const std::string_view& folder_name, int64_t timestamp_
   const Isometry3T isometry_guess_pose = ConvertPoseToIsometry(guess_pose);
 
   // copy user images
-  Sources image_sources(images.size());
-  Metas image_metas(images.size());
-  sof::Images images_ptrs;
+  Sources image_sources(impl->rig_.num_cameras);
+  Metas image_metas(impl->rig_.num_cameras);
+  sof::Images images_ptrs(impl->rig_.num_cameras, nullptr);
   // Get image dimensions from the first camera (assuming all cameras have same resolution)
   const ImageShape shape{images[0].width, images[0].height};
   constexpr size_t cache_size = 4;
@@ -1173,7 +1178,9 @@ void Slam::LocalizeInMap(const std::string_view& folder_name, int64_t timestamp_
   }
 #endif
 
-  THROW_INVALID_ARG_IF(images_ptrs.empty(), "No valid images to localize");
+  const bool has_images =
+      std::any_of(images_ptrs.begin(), images_ptrs.end(), [](const auto& image) { return image != nullptr; });
+  THROW_INVALID_ARG_IF(!has_images, "No valid images to localize");
 
   impl->async_slam_->LocalizeInMap(folder_name, timestamp_ns, isometry_guess_pose, images_ptrs, settings, start_cb,
                                    finish_cb);

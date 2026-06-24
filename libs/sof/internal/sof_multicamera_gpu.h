@@ -68,7 +68,7 @@ private:
   void LaunchTrackingPrimaryToSecondary(CameraId primary_id, CameraId secondary_id, const Sources& curr_sources,
                                         Images& curr_images, const std::vector<camera::Observation>& primary_obs,
                                         std::vector<camera::Observation>* secondary_obs = nullptr) final;
-  void GetTrackingResults(std::unordered_map<CameraId, std::vector<camera::Observation>>& observations) final;
+  void GetTrackingResults(MulticamObservations& observations) final;
 
   void StartKeyframe() final;
 };

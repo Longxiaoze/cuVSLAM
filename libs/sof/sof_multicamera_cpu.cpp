@@ -50,13 +50,14 @@ void MultiSOFCPU::LaunchTrackingPrimaryToSecondary(CameraId primary_id, CameraId
                                                    const std::vector<camera::Observation>& primary_obs,
                                                    std::vector<camera::Observation>* secondary_obs) {
   ImageContextPtr primary_image = curr_images[primary_id];
-  const ImageSource& secondary_source = curr_sources.at(secondary_id);
+  const ImageSource& secondary_source = curr_sources[secondary_id];
   ImageContextPtr secondary_image = curr_images[secondary_id];
 
   const camera::ICameraModel& intrinsicsP = *rig_.intrinsics[primary_id];
   const camera::ICameraModel& intrinsicsS = *rig_.intrinsics[secondary_id];
 
   const std::unique_ptr<IFeatureTracker>& tracker = secondary_from_primary_sof_[primary_id][secondary_id];
+  assert(tracker != nullptr);
 
   const Isometry3T secondary_from_primary =
       rig_.camera_from_rig[secondary_id] * rig_.camera_from_rig[primary_id].inverse();
@@ -101,7 +102,7 @@ void MultiSOFCPU::LaunchTrackingPrimaryToSecondary(CameraId primary_id, CameraId
   }
 }
 
-void MultiSOFCPU::GetTrackingResults(std::unordered_map<CameraId, std::vector<camera::Observation>>&) { return; }
+void MultiSOFCPU::GetTrackingResults(MulticamObservations&) { return; }
 
 void MultiSOFCPU::StartKeyframe() {}
 

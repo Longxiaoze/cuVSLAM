@@ -18,7 +18,6 @@
 #pragma once
 
 #include <memory>
-#include <unordered_map>
 #include <vector>
 
 #include "camera/observation.h"
@@ -34,12 +33,15 @@
 
 namespace cuvslam::sof {
 
+// Camera-indexed vector sized to rig.num_cameras; an empty inner vector means no observations for that camera.
+using MulticamObservations = std::vector<std::vector<camera::Observation>>;
+
 class IMultiSOF {
 public:
   virtual bool trackNextFrame(const Sources& curr_sources, Images& curr_images, const Images& prev_images,
                               const Sources& masks_sources, const Isometry3T& predicted_world_from_rig,
-                              std::unordered_map<CameraId, std::vector<camera::Observation>>& observations,
-                              FrameState& state, const odom::TrackPerFrameSettings& per_frame) = 0;
+                              MulticamObservations& observations, FrameState& state,
+                              const odom::TrackPerFrameSettings& per_frame) = 0;
 
   virtual void reset() = 0;
 

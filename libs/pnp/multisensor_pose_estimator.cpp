@@ -150,8 +150,8 @@ MultisensorPoseEstimator::MultisensorPoseEstimator(const camera::Rig& rig, const
 bool MultisensorPoseEstimator::solve(Isometry3T& rig_from_world, Matrix6T& static_info_exp,
                                      const std::vector<camera::Observation>& observations,
                                      const std::unordered_map<TrackId, Vector3T>& landmarks,
-                                     const std::unordered_map<CameraId, const RGBDInfo*>& depth_infos,
-                                     const std::vector<map::Plane>& planes, const std::vector<Vector3T>& depth_points,
+                                     const RGBDInfos& depth_infos, const std::vector<map::Plane>& planes,
+                                     const std::vector<Vector3T>& depth_points,
                                      const std::optional<InertialPriorInput>& imu_in,
                                      InertialPosteriorOutput* imu_out) const {
   TRACE_EVENT ev = profiler_domain_.trace_event("solve");
@@ -163,7 +163,10 @@ bool MultisensorPoseEstimator::solve(Isometry3T& rig_from_world, Matrix6T& stati
 
   const size_t n = filtered_obs_.size();
 
-  if (n < settings_.min_observations && depth_infos.empty() && !imu_in.has_value()) {
+  const size_t num_depth = std::count_if(depth_infos.begin(), depth_infos.end(),
+                                         [](const RGBDInfo* depth_info) { return depth_info != nullptr; });
+
+  if (n < settings_.min_observations && num_depth == 0 && !imu_in.has_value()) {
     static_info_exp.setZero();
     return false;
   }
@@ -222,10 +225,13 @@ bool MultisensorPoseEstimator::solve(Isometry3T& rig_from_world, Matrix6T& stati
   problem.AddStateBatch(&se3_states);
 
   // ── Upload per-depth-camera cam_from_rig extrinsics (shared by ICP and P2P) ──
-  const size_t num_depth = depth_infos.size();
   if (num_depth > 0) {
     size_t idx = 0;
-    for (const auto& [cam_id, depth_info] : depth_infos) {
+    for (CameraId cam_id = 0; cam_id < depth_infos.size(); ++cam_id) {
+      const RGBDInfo* depth_info = depth_infos[cam_id];
+      if (depth_info == nullptr) {
+        continue;
+      }
       IsometryToSE3Transform(rig_.camera_from_rig[cam_id], d_depth_cam_from_rig_[idx]);
       ++idx;
     }
@@ -238,7 +244,7 @@ bool MultisensorPoseEstimator::solve(Isometry3T& rig_from_world, Matrix6T& stati
   std::optional<ScaledCauchy> loss_icp_scaled;
   icp_state_ptrs_.clear();
 
-  if (!depth_infos.empty() && num_dp > 0) {
+  if (num_depth > 0 && num_dp > 0) {
     TRACE_EVENT icp_ev = profiler_domain_.trace_event("icp");
 
     for (size_t i = 0; i < num_dp; i++) {
@@ -251,7 +257,11 @@ bool MultisensorPoseEstimator::solve(Isometry3T& rig_from_world, Matrix6T& stati
     icp_state_ptrs_.assign(num_dp, se3_states.StateBlockDevicePtr(0));
 
     size_t idx = 0;
-    for (const auto& [cam_id, depth_info] : depth_infos) {
+    for (CameraId cam_id = 0; cam_id < depth_infos.size(); ++cam_id) {
+      const RGBDInfo* depth_info = depth_infos[cam_id];
+      if (depth_info == nullptr) {
+        continue;
+      }
       auto cp = extract_camera_params(rig_, cam_id, *depth_info);
 
       const float* d_cfr_ptr = reinterpret_cast<const float*>(d_depth_cam_from_rig_.ptr()) + idx * 16;
@@ -270,7 +280,7 @@ bool MultisensorPoseEstimator::solve(Isometry3T& rig_from_world, Matrix6T& stati
   p2p_state_ptrs_.clear();
   p2p_state_ptrs_.resize(num_depth);
 
-  if (!planes.empty() && !depth_infos.empty()) {
+  if (!planes.empty() && num_depth > 0) {
     TRACE_EVENT p2p_ev = profiler_domain_.trace_event("point_to_plane");
 
     for (size_t i = 0; i < num_gpu_planes; i++) {
@@ -282,7 +292,11 @@ bool MultisensorPoseEstimator::solve(Isometry3T& rig_from_world, Matrix6T& stati
     size_t total_factors = 0;
 
     size_t cam_idx = 0;
-    for (const auto& [cam_id, depth_info] : depth_infos) {
+    for (CameraId cam_id = 0; cam_id < depth_infos.size(); ++cam_id) {
+      const RGBDInfo* depth_info = depth_infos[cam_id];
+      if (depth_info == nullptr) {
+        continue;
+      }
       auto cp = extract_camera_params(rig_, cam_id, *depth_info);
 
       const int grid_w = (cp.img_size.x + stride - 1) / stride;
@@ -300,7 +314,10 @@ bool MultisensorPoseEstimator::solve(Isometry3T& rig_from_world, Matrix6T& stati
     if (total_factors > 0) {
       const float p2p_scale = fw.point_to_plane / static_cast<float>(total_factors);
       cam_idx = 0;
-      for (const auto& [cam_id, depth_info] : depth_infos) {
+      for (CameraId cam_id = 0; cam_id < depth_infos.size(); ++cam_id) {
+        if (depth_infos[cam_id] == nullptr) {
+          continue;
+        }
         const size_t nf = p2p_costs[cam_idx]->NumFactors();
         loss_p2p[cam_idx].emplace(p2p_scale, 1, fw.robust_point_to_plane);
         p2p_state_ptrs_[cam_idx].assign(nf, se3_states.StateBlockDevicePtr(0));

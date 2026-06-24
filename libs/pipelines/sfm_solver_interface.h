@@ -19,7 +19,6 @@
 
 #include <vector>
 
-#include "camera/observation.h"
 #include "camera/rig.h"
 #include "common/isometry.h"
 #include "common/vector_2t.h"
@@ -33,7 +32,7 @@
 
 namespace cuvslam::pipelines {
 
-using MulticamObservations = std::unordered_map<CameraId, std::vector<camera::Observation>>;
+using MulticamObservations = sof::MulticamObservations;
 
 // Solver-level per-frame settings. Contains the subset of per-frame overrides
 // that are consumed inside solveNextFrame. Extend this struct (rather than

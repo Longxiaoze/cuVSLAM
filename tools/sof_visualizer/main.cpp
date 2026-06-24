@@ -15,6 +15,7 @@
  * of the software or derivative works thereof, you agree to be bound by this License.
  */
 
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
 
@@ -175,8 +176,8 @@ static void DoStereoTrack(const std::string& edexFile, std::string outputFolder,
 
   cuvslam::sof::FrameState frameState;
 
-  std::unordered_map<CameraId, std::vector<camera::Observation>> tracks;
-  std::unordered_map<CameraId, std::vector<camera::Observation>> prev_tracks;
+  std::vector<std::vector<camera::Observation>> tracks(cam_rig.num_cameras);
+  std::vector<std::vector<camera::Observation>> prev_tracks(cam_rig.num_cameras);
 
   Sources curr_sources;
   Sources masks_sources;
@@ -208,10 +209,11 @@ static void DoStereoTrack(const std::string& edexFile, std::string outputFolder,
 
     auto dropped_cams = drop->GetDroppedImages(FLAGS_image_drop_rate, rig.getCamerasNum());
     for (const auto& cam_id : dropped_cams) {
-      curr_sources.erase(cam_id);
-      curr_meta.erase(cam_id);
+      curr_sources[cam_id] = {};
     }
-    if (curr_sources.empty()) {
+    const bool has_sources = std::any_of(curr_sources.begin(), curr_sources.end(),
+                                         [](const ImageSource& source) { return source.data != nullptr; });
+    if (!has_sources) {
       continue;
     }
 
@@ -219,21 +221,29 @@ static void DoStereoTrack(const std::string& edexFile, std::string outputFolder,
       image_manager.init(curr_meta[0].shape, curr_sources.size() * 4, FLAGS_use_gpu);
     }
 
-    for (const auto& [cam_id, img] : curr_image_ptrs) {
-      prev_image_ptrs[cam_id] = img;
+    if (prev_image_ptrs.size() != curr_image_ptrs.size()) {
+      prev_image_ptrs.assign(curr_image_ptrs.size(), nullptr);
     }
-    curr_image_ptrs.clear();
-    for (const auto& [cam_id, meta] : curr_meta) {
+    for (CameraId cam_id = 0; cam_id < curr_image_ptrs.size(); ++cam_id) {
+      if (curr_image_ptrs[cam_id] != nullptr) {
+        prev_image_ptrs[cam_id] = curr_image_ptrs[cam_id];
+      }
+    }
+    curr_image_ptrs.assign(curr_sources.size(), nullptr);
+    for (CameraId cam_id = 0; cam_id < curr_sources.size(); ++cam_id) {
+      if (curr_sources[cam_id].data == nullptr) {
+        continue;
+      }
       sof::ImageContextPtr ptr = image_manager.acquire();
       if (ptr == nullptr) {
         TraceError("ImageManager::acquire returned nullptr");
         return;
       }
-      ptr->set_image_meta(meta);
-      curr_image_ptrs.insert({cam_id, ptr});
+      ptr->set_image_meta(curr_meta[cam_id]);
+      curr_image_ptrs[cam_id] = ptr;
     }
 
-    frameId = curr_meta.begin()->second.frame_id;
+    frameId = curr_meta[0].frame_id;
     std::cout << "Track frame " << frameId << std::endl;
     odom::TrackPerFrameSettings per_frame_settings{};
     per_frame_settings.sof = sof_settings;
@@ -242,15 +252,20 @@ static void DoStereoTrack(const std::string& edexFile, std::string outputFolder,
                                tracks, frameState, per_frame_settings);
 
     std::unordered_map<CameraId, cv::Mat> drawings;
-    for (const auto& [cam, meta] : curr_meta) {
-      drawings.emplace(cam, CreateImage(curr_sources[cam], meta.shape));
+    for (CameraId cam = 0; cam < curr_sources.size(); ++cam) {
+      if (curr_sources[cam].data != nullptr) {
+        drawings.emplace(cam, CreateImage(curr_sources[cam], curr_meta[cam].shape));
+      }
     }
 
     if (frameState == sof::FrameState::Key) {
       std::cout << "Keyframe!" << std::endl;
     }
 
-    for (const auto& [cam, meta] : curr_meta) {
+    for (CameraId cam = 0; cam < curr_sources.size(); ++cam) {
+      if (curr_sources[cam].data == nullptr) {
+        continue;
+      }
       std::cout << "num_tracks in cam " << cam << " = " << tracks[cam].size() << std::endl;
       for (const auto& track : tracks[cam]) {
         if (trackColors.count(track.id) == 0) {

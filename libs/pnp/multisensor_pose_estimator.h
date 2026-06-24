@@ -45,6 +45,9 @@ struct RGBDInfo {
   const cuda::GaussianGPUImagePyramid& curr_depth;
 };
 
+// Camera-indexed vector sized to rig.num_cameras; nullptr means this camera has no depth for the frame.
+using RGBDInfos = std::vector<const RGBDInfo*>;
+
 // Weights and robust-loss scales for each factor type in the optimization.
 struct FactorWeights {
   float reprojection = 1.0f;
@@ -125,8 +128,7 @@ public:
 
   bool solve(Isometry3T& rig_from_world, Matrix6T& static_info_exp,
              const std::vector<camera::Observation>& observations,
-             const std::unordered_map<TrackId, Vector3T>& landmarks,
-             const std::unordered_map<CameraId, const RGBDInfo*>& depth_infos = {},
+             const std::unordered_map<TrackId, Vector3T>& landmarks, const RGBDInfos& depth_infos = {},
              const std::vector<map::Plane>& planes = {}, const std::vector<Vector3T>& depth_points = {},
              const std::optional<InertialPriorInput>& imu_in = std::nullopt,
              InertialPosteriorOutput* imu_out = nullptr) const;

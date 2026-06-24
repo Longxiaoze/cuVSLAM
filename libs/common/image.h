@@ -20,7 +20,6 @@
 #include <cassert>
 #include <cstdint>
 #include <optional>
-#include <unordered_map>
 #include <vector>
 
 #include "common/camera_id.h"
@@ -106,7 +105,13 @@ struct ImageSource::EnumAsType<ImageSource::U16> {
   using type = uint16_t;
 };
 
-using Sources = std::unordered_map<CameraId, ImageSource>;
-using Metas = std::unordered_map<CameraId, ImageMeta>;
-using DepthSources = std::unordered_map<CameraId, ImageSource>;
+// Camera-indexed vectors are sized to rig.num_cameras before crossing internal APIs.
+// Missing RGB/depth/mask data is represented by ImageSource::data == nullptr.
+using Sources = std::vector<ImageSource>;
+
+// Metadata slots are meaningful only when the matching image source/context slot is present.
+using Metas = std::vector<ImageMeta>;
+
+// Missing per-frame depth is represented by ImageSource::data == nullptr.
+using DepthSources = std::vector<ImageSource>;
 }  // namespace cuvslam

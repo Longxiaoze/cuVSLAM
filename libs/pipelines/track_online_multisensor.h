@@ -61,9 +61,8 @@ public:
   const camera::Rig& getRig() const;
 
   bool solveNextFrame(int64_t time_ns, const sof::FrameState& frameState, const MulticamObservations& observations,
-                      const std::unordered_map<CameraId, const pnp::RGBDInfo*>& depth_infos, Isometry3T& world_from_rig,
-                      Matrix6T& static_info_exp, std::vector<Track2D>* tracks2d = nullptr,
-                      Tracks3DMap* tracks3d = nullptr);
+                      const pnp::RGBDInfos& depth_infos, Isometry3T& world_from_rig, Matrix6T& static_info_exp,
+                      std::vector<Track2D>* tracks2d = nullptr, Tracks3DMap* tracks3d = nullptr);
 
   void reset();
 
@@ -82,20 +81,18 @@ public:
 
 private:
   bool solveNextFrameVisualOnly(int64_t time_ns, const sof::FrameState& frameState,
-                                const MulticamObservations& observations,
-                                const std::unordered_map<CameraId, const pnp::RGBDInfo*>& depth_infos,
+                                const MulticamObservations& observations, const pnp::RGBDInfos& depth_infos,
                                 Isometry3T& world_from_rig, Matrix6T& static_info_exp, std::vector<Track2D>* tracks2d,
                                 Tracks3DMap* tracks3d);
 
   bool solveNextFrameInertial(int64_t time_ns, const sof::FrameState& frameState,
-                              const MulticamObservations& observations,
-                              const std::unordered_map<CameraId, const pnp::RGBDInfo*>& depth_infos,
+                              const MulticamObservations& observations, const pnp::RGBDInfos& depth_infos,
                               Isometry3T& world_from_rig, Matrix6T& static_info_exp, std::vector<Track2D>* tracks2d,
                               Tracks3DMap* tracks3d);
 
   // Triangulate, lift, push the keyframe to the map, refresh planes, and notify SBA.
   void process_keyframe(int64_t time_ns, const Isometry3T& world_from_rig, const std::vector<camera::Observation>& obs,
-                        const std::unordered_map<CameraId, const pnp::RGBDInfo*>& depth_infos, const map::State& state,
+                        const pnp::RGBDInfos& depth_infos, const map::State& state,
                         const sba_imu::IMUPreintegration& preint);
 
   void exportTracks(const std::vector<camera::Observation>& observations, std::vector<Track2D>& out_tracks2d,

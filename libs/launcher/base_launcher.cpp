@@ -215,11 +215,16 @@ ErrorCode BaseLauncher::launch() {
     {
       log::Scoped<LogFrames> frame("frames");
 
-      for (const auto& [cam_id, img] : curr_image_ptrs) {
-        prev_image_ptrs[cam_id] = img;
+      if (prev_image_ptrs.size() != static_cast<size_t>(rig.num_cameras)) {
+        prev_image_ptrs.assign(rig.num_cameras, nullptr);
+      }
+      for (CameraId cam_id = 0; cam_id < curr_image_ptrs.size(); ++cam_id) {
+        if (curr_image_ptrs[cam_id] != nullptr) {
+          prev_image_ptrs[cam_id] = curr_image_ptrs[cam_id];
+        }
       }
       // prev_image_ptrs = curr_image_ptrs;
-      curr_image_ptrs.clear();
+      curr_image_ptrs.assign(rig.num_cameras, nullptr);
 
       const ErrorCode err = cameraRig_.getFrame(curr_sources, curr_meta, masks_sources, depth_sources);
       if (err != ErrorCode::S_True) {
@@ -248,18 +253,19 @@ ErrorCode BaseLauncher::launch() {
 
       // Drop depth entries the launcher is not configured to use, so downstream odometry
       // (e.g. MultisensorOdometry::track) never sees depth from cameras the user excluded.
-      for (auto it = depth_sources.begin(); it != depth_sources.end();) {
-        if (!isDepthCamera(it->first)) {
-          it = depth_sources.erase(it);
-        } else {
-          ++it;
+      for (CameraId cam_id = 0; cam_id < depth_sources.size(); ++cam_id) {
+        if (!isDepthCamera(cam_id)) {
+          depth_sources[cam_id] = {};
         }
       }
 
-      for (const auto& [camera_id, meta] : curr_meta) {
+      for (CameraId camera_id = 0; camera_id < curr_sources.size(); ++camera_id) {
+        if (curr_sources[camera_id].data == nullptr) {
+          continue;
+        }
         sof::ImageContextPtr ptr;
 
-        if (isDepthCamera(camera_id)) {
+        if (depth_sources[camera_id].data != nullptr) {
           ptr = image_manager_.acquire_with_depth();
         } else {
           ptr = image_manager_.acquire();
@@ -269,19 +275,22 @@ ErrorCode BaseLauncher::launch() {
           TraceError("ImageManager::acquire returned nullptr");
           return ErrorCode::E_Pointer;
         }
-        ptr->set_image_meta(meta);
-        curr_image_ptrs.insert({camera_id, ptr});
+        ptr->set_image_meta(curr_meta[camera_id]);
+        curr_image_ptrs[camera_id] = ptr;
       }
 
       {
-        Sources sources;
-        sof::Images image_ptrs = {};
+        Sources sources(rig.num_cameras);
+        sof::Images image_ptrs(rig.num_cameras, nullptr);
 
         auto dropped_cams = drop->GetDroppedImages(FLAGS_image_drop_rate, rig.num_cameras);
 
-        for (const auto& [cam_id, source] : curr_sources) {
+        for (CameraId cam_id = 0; cam_id < curr_sources.size(); ++cam_id) {
+          if (curr_sources[cam_id].data == nullptr) {
+            continue;
+          }
           if (dropped_cams.find(cam_id) == dropped_cams.end()) {
-            sources[cam_id] = source;
+            sources[cam_id] = curr_sources[cam_id];
             image_ptrs[cam_id] = curr_image_ptrs[cam_id];
           }
         }
@@ -291,11 +300,10 @@ ErrorCode BaseLauncher::launch() {
       }
 
       {
-        slam_images.clear();
+        slam_images.assign(rig.num_cameras, nullptr);
         for (CameraId cam_id : slam_cameras_) {
-          const auto it = curr_image_ptrs.find(cam_id);
-          if (it != curr_image_ptrs.end()) {
-            slam_images[cam_id] = it->second;
+          if (cam_id < curr_image_ptrs.size() && curr_image_ptrs[cam_id] != nullptr) {
+            slam_images[cam_id] = curr_image_ptrs[cam_id];
           }
         }
       }
@@ -330,7 +338,7 @@ ErrorCode BaseLauncher::launch() {
       // log camera 0 images
       RERUN(logCameraImages, curr_meta, curr_sources, {0}, {"world/camera_0/images"});
       // log depth image as separate 2D view
-      if (!depth_sources.empty()) {
+      if (!depth_sources.empty() && depth_sources[0].data != nullptr) {
         RERUN(logDepthImage, depth_sources[0], curr_meta[0], "world/camera_0/depth", 1.0f, 0.0f, 5.0f);
       }
       if (gt_poses_.size() > static_cast<size_t>(frameId)) {
@@ -418,13 +426,14 @@ ErrorCode BaseLauncher::launch() {
     }
 
     const CameraId default_camera = 0;
-    if (slam_images.find(default_camera) != slam_images.end() && curr_meta.find(default_camera) != curr_meta.end() &&
-        FLAGS_slam_load_and_localize_on_frame == curr_meta.at(default_camera).frame_number) {
+    if (default_camera < slam_images.size() && slam_images[default_camera] != nullptr &&
+        default_camera < curr_meta.size() &&
+        FLAGS_slam_load_and_localize_on_frame == curr_meta[default_camera].frame_number) {
       constexpr int64_t ns_from_second = 1000000000;  // 1.000.000.000
       const int64_t load_map_timestamp_ns =
           FLAGS_slam_load_and_localize_timestamp > 0
               ? static_cast<int64_t>(ns_from_second * FLAGS_slam_load_and_localize_timestamp)
-              : slam_images.at(default_camera)->get_image_meta().timestamp;
+              : slam_images[default_camera]->get_image_meta().timestamp;
       LaunchLoadMapAndLocalize(*async_slam_, load_map_timestamp_ns, slam_images, FLAGS_use_gpu);
     }
   }

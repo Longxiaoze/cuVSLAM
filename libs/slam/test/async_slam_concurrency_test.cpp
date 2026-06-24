@@ -56,7 +56,9 @@ cuvslam::slam::Images MakeImages(cuvslam::FrameId frame_id, int64_t timestamp_ns
   meta.camera_index = 0;
   image->set_image_meta(meta);
 
-  return {{0, image}};
+  cuvslam::slam::Images images(1, nullptr);
+  images[0] = image;
+  return images;
 }
 
 cuvslam::Slam::LocalizationSettings MakeLocalizationSettings() {

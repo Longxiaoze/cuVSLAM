@@ -47,11 +47,6 @@ int64_t RepeatedCameraRigEdex::adjust_timestamp(int64_t timestamp) {
 
 ErrorCode RepeatedCameraRigEdex::getFrame(Sources& sources, Metas& metas, Sources& masks_sources,
                                           DepthSources& depth_sources) {
-  sources.clear();
-  metas.clear();
-  masks_sources.clear();
-  depth_sources.clear();
-
   if (!check_end_of_sequence()) {
     return ErrorCode::E_Bounds;
   }
@@ -61,8 +56,10 @@ ErrorCode RepeatedCameraRigEdex::getFrame(Sources& sources, Metas& metas, Source
     return res;
   }
 
-  for (auto& [cam, meta] : metas) {
-    meta.timestamp = adjust_timestamp(meta.timestamp);
+  for (CameraId cam_id = 0; cam_id < metas.size(); ++cam_id) {
+    if (sources[cam_id].data != nullptr) {
+      metas[cam_id].timestamp = adjust_timestamp(metas[cam_id].timestamp);
+    }
   }
   return ErrorCode::S_True;
 }

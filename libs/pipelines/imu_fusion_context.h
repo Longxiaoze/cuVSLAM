@@ -80,16 +80,14 @@ public:
   // Solve visual + IMU SE3 prior with the cuNLS RGBD estimator. Updates curr_pose's translation
   // (from the solve) and velocity/biases (from prev_pose + visual delta).
   bool solve_inertial(const std::unordered_map<TrackId, Vector3T>& landmarks,
-                      const std::vector<camera::Observation>& observations,
-                      const std::unordered_map<CameraId, const pnp::RGBDInfo*>& depth_infos,
+                      const std::vector<camera::Observation>& observations, const pnp::RGBDInfos& depth_infos,
                       const std::vector<map::Plane>& planes, const std::vector<Vector3T>& depth_points,
                       int64_t time_ns);
 
   // Pure-visual RGBD solve while IMU is still uninitialized. Same data flow, just without the IMU
   // SE3 prior factor.
   bool solve_visual(const std::unordered_map<TrackId, Vector3T>& landmarks,
-                    const std::vector<camera::Observation>& observations,
-                    const std::unordered_map<CameraId, const pnp::RGBDInfo*>& depth_infos,
+                    const std::vector<camera::Observation>& observations, const pnp::RGBDInfos& depth_infos,
                     const std::vector<map::Plane>& planes, const std::vector<Vector3T>& depth_points, int64_t time_ns);
 
   struct FrameResult {

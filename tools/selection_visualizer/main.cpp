@@ -100,24 +100,6 @@ static void DoMonoTrack(const std::string& edexFile, std::string outputFolder, s
 
   while (err != ErrorCode::E_Bounds) {
     err = rig.getFrame(curr_sources, curr_meta, masks_sources, depth_sources);
-    if (!image_manager.is_initialized()) {
-      image_manager.init(curr_meta[0].shape, curr_sources.size() * 4, false);
-    }
-
-    for (const auto& [cam_id, img] : curr_image_ptrs) {
-      prev_image_ptrs[cam_id] = img;
-    }
-    curr_image_ptrs.clear();
-    for (const auto& [cam_id, meta] : curr_meta) {
-      sof::ImageContextPtr ptr = image_manager.acquire();
-      if (ptr == nullptr) {
-        TraceError("ImageManager::acquire returned nullptr");
-        return;
-      }
-      ptr->set_image_meta(meta);
-      curr_image_ptrs.insert({cam_id, ptr});
-    }
-
     if (err != ErrorCode::S_True) {
       if (err != ErrorCode::E_Bounds) {
         std::cout << "Can't get image for tracking" << ErrorCode::GetString(err) << std::endl;
@@ -126,16 +108,50 @@ static void DoMonoTrack(const std::string& edexFile, std::string outputFolder, s
       return;
     }
 
-    sof::ImageContextPtr prev_image;
-    auto prev_it = prev_image_ptrs.find(0);
-    if (prev_it != prev_image_ptrs.end()) {
-      prev_image = prev_it->second;
+    constexpr CameraId cam_id = 0;
+    if (curr_sources.empty() || cam_id >= curr_meta.size() || curr_sources[cam_id].data == nullptr) {
+      continue;
     }
 
+    if (!image_manager.is_initialized()) {
+      image_manager.init(curr_meta[cam_id].shape, curr_sources.size() * 4, false);
+    }
+
+    if (prev_image_ptrs.size() != curr_sources.size()) {
+      prev_image_ptrs.assign(curr_sources.size(), nullptr);
+    }
+    if (cam_id < curr_image_ptrs.size() && curr_image_ptrs[cam_id] != nullptr) {
+      prev_image_ptrs[cam_id] = curr_image_ptrs[cam_id];
+    }
+    curr_image_ptrs.assign(curr_sources.size(), nullptr);
+    for (CameraId id = 0; id < curr_sources.size(); ++id) {
+      if (curr_sources[id].data == nullptr) {
+        continue;
+      }
+      sof::ImageContextPtr ptr = image_manager.acquire();
+      if (ptr == nullptr) {
+        TraceError("ImageManager::acquire returned nullptr");
+        return;
+      }
+      ptr->set_image_meta(curr_meta[id]);
+      curr_image_ptrs[id] = ptr;
+    }
+
+    if (curr_image_ptrs.empty() || curr_image_ptrs[cam_id] == nullptr) {
+      continue;
+    }
+
+    sof::ImageContextPtr prev_image;
+    if (cam_id < prev_image_ptrs.size()) {
+      prev_image = prev_image_ptrs[cam_id];
+    }
+
+    const ImageSource* mask_source =
+        (cam_id < masks_sources.size() && masks_sources[cam_id].data != nullptr) ? &masks_sources[cam_id] : nullptr;
     odom::KeyFrameSettings kf_settings;
     const sof::MonoSOFFrameSettings sof_frame_settings{sof_settings, kf_settings};
-    sof->track({curr_sources[0], curr_image_ptrs[0]}, prev_image, Isometry3T::Identity(), sof_frame_settings,
-               &(masks_sources[0]));
+    sof->track({curr_sources[cam_id], curr_image_ptrs[cam_id]}, prev_image, Isometry3T::Identity(), sof_frame_settings,
+               mask_source);
     sof::FrameState state;
     const auto& tracks_vector = sof->finish(state, sof_frame_settings);
     if (state != sof::FrameState::Key) {

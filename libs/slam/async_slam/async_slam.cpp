@@ -17,6 +17,7 @@
 
 #include "slam/async_slam/async_slam.h"
 
+#include <algorithm>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -138,7 +139,8 @@ void AsyncSlam::TrackResult(FrameId frameId, int64_t timestamp_ns, const odom::I
 
   VO_IncrementFrameData(frameId, timestamp_ns, delta, track_data_);
 
-  if (is_keyframe && !images.empty()) {
+  const bool has_images = std::any_of(images.begin(), images.end(), [](const auto& image) { return image != nullptr; });
+  if (is_keyframe && has_images) {
     const auto vo_keyframe = std::make_shared<VOKeyframeInfo>(VOKeyframeInfo());
     const Isometry3T current_pose = GetSlamPose();
 
@@ -169,7 +171,7 @@ void AsyncSlam::TrackResult(FrameId frameId, int64_t timestamp_ns, const odom::I
           continue;  // remove landmarks outside the max distance
         }
 
-        if (images.find(x.cam_id) == images.end()) {
+        if (x.cam_id >= images.size() || images[x.cam_id] == nullptr) {
           continue;
         }
         if (x.cam_id >= rig_.num_cameras) {
@@ -378,8 +380,10 @@ void AsyncSlam::ProcessInput() {
       std::lock_guard image_guard(processing_images_mutex_);
       current_images = processing_images_;
     }
+    const auto current_image =
+        std::find_if(current_images.begin(), current_images.end(), [](const auto& image) { return image != nullptr; });
     const bool is_valid_image =
-        !current_images.empty() && (current_images.begin()->second->get_image_meta().frame_id == frame_data.frame_id);
+        current_image != current_images.end() && ((*current_image)->get_image_meta().frame_id == frame_data.frame_id);
     Isometry3T pose_estimate_slam;
     {
       const VOTrackData& track_data = vo_kf->track_data;
@@ -420,8 +424,10 @@ void AsyncSlam::ProcessInput() {
     std::lock_guard image_guard(processing_images_mutex_);
     current_images = processing_images_;
   }
+  const auto current_image =
+      std::find_if(current_images.begin(), current_images.end(), [](const auto& image) { return image != nullptr; });
   bool is_valid_image =
-      !current_images.empty() && (current_images.begin()->second->get_image_meta().frame_id == frame_id);
+      current_image != current_images.end() && ((*current_image)->get_image_meta().frame_id == frame_id);
 
   if (is_valid_image) {
     // init last_step_telemetry_
@@ -553,13 +559,18 @@ std::string AsyncSlam::FrameInformationString(const sof::Images& images) {
 #ifdef CUVSLAM_LOG_ENABLE
   Json::Value json;
 
-  if (images.size() >= 1) {
-    auto& meta_0 = images.begin()->second->get_image_meta();
+  const auto first_image =
+      std::find_if(images.begin(), images.end(), [](const auto& image) { return image != nullptr; });
+  if (first_image != images.end()) {
+    auto& meta_0 = (*first_image)->get_image_meta();
     json["frame_id"] = static_cast<Json::UInt64>(meta_0.frame_id);
     json["timestamp"] = static_cast<Json::UInt64>(meta_0.timestamp);
     json["frame_number"] = meta_0.frame_number;
-    for (const auto& [cam_id, img] : images) {
-      json["image_file" + std::to_string(cam_id)] = img->get_image_meta().filename;
+    for (CameraId cam_id = 0; cam_id < images.size(); ++cam_id) {
+      const auto& img = images[cam_id];
+      if (img != nullptr) {
+        json["image_file" + std::to_string(cam_id)] = img->get_image_meta().filename;
+      }
     }
   }
 

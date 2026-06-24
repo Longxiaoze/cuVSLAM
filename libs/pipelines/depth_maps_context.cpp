@@ -17,6 +17,8 @@
 
 #include "pipelines/depth_maps_context.h"
 
+#include <algorithm>
+
 #include "common/vector_2t.h"
 
 namespace cuvslam::pipelines {
@@ -29,9 +31,8 @@ void DepthMapsContext::reset() {
   depth_point_map_.clear();
 }
 
-bool DepthMapsContext::update_post_solve(const std::unordered_map<CameraId, const pnp::RGBDInfo*>& depth_infos,
-                                         const Isometry3T& world_from_rig) {
-  if (depth_infos.empty()) {
+bool DepthMapsContext::update_post_solve(const pnp::RGBDInfos& depth_infos, const Isometry3T& world_from_rig) {
+  if (std::none_of(depth_infos.begin(), depth_infos.end(), [](const pnp::RGBDInfo* info) { return info != nullptr; })) {
     return false;
   }
   auto depth_cameras = build_depth_camera_infos(depth_infos, world_from_rig);
@@ -39,12 +40,16 @@ bool DepthMapsContext::update_post_solve(const std::unordered_map<CameraId, cons
   return depth_point_map_.added_last_update();
 }
 
-std::vector<Landmark> DepthMapsContext::build_keyframe_landmarks(
-    const Isometry3T& world_from_rig, const std::vector<camera::Observation>& observations,
-    const std::unordered_map<CameraId, const pnp::RGBDInfo*>& depth_infos) {
+std::vector<Landmark> DepthMapsContext::build_keyframe_landmarks(const Isometry3T& world_from_rig,
+                                                                 const std::vector<camera::Observation>& observations,
+                                                                 const pnp::RGBDInfos& depth_infos) {
   std::vector<Landmark> landmarks = triangulator_.triangulate(world_from_rig, observations);
 
-  for (const auto& [cam_id, depth_info] : depth_infos) {
+  for (CameraId cam_id = 0; cam_id < depth_infos.size(); ++cam_id) {
+    const pnp::RGBDInfo* depth_info = depth_infos[cam_id];
+    if (depth_info == nullptr) {
+      continue;
+    }
     std::vector<camera::Observation> camera_observations;
     camera_observations.reserve(observations.size());
     for (const auto& obs : observations) {
@@ -59,20 +64,24 @@ std::vector<Landmark> DepthMapsContext::build_keyframe_landmarks(
   return landmarks;
 }
 
-void DepthMapsContext::update_at_keyframe(const std::unordered_map<CameraId, const pnp::RGBDInfo*>& depth_infos,
-                                          const Isometry3T& world_from_rig) {
-  if (depth_infos.empty()) {
+void DepthMapsContext::update_at_keyframe(const pnp::RGBDInfos& depth_infos, const Isometry3T& world_from_rig) {
+  if (std::none_of(depth_infos.begin(), depth_infos.end(), [](const pnp::RGBDInfo* info) { return info != nullptr; })) {
     return;
   }
   auto depth_cameras = build_depth_camera_infos(depth_infos, world_from_rig);
   plane_map_.update_at_keyframe(depth_cameras);
 }
 
-std::vector<map::DepthCameraInfo> DepthMapsContext::build_depth_camera_infos(
-    const std::unordered_map<CameraId, const pnp::RGBDInfo*>& depth_infos, const Isometry3T& world_from_rig) const {
+std::vector<map::DepthCameraInfo> DepthMapsContext::build_depth_camera_infos(const pnp::RGBDInfos& depth_infos,
+                                                                             const Isometry3T& world_from_rig) const {
   std::vector<map::DepthCameraInfo> depth_cameras;
-  depth_cameras.reserve(depth_infos.size());
-  for (const auto& [cam_id, depth_info] : depth_infos) {
+  depth_cameras.reserve(
+      std::count_if(depth_infos.begin(), depth_infos.end(), [](const pnp::RGBDInfo* info) { return info != nullptr; }));
+  for (CameraId cam_id = 0; cam_id < depth_infos.size(); ++cam_id) {
+    const pnp::RGBDInfo* depth_info = depth_infos[cam_id];
+    if (depth_info == nullptr) {
+      continue;
+    }
     const auto& intrinsics = *rig_.intrinsics[cam_id];
     Vector2T focal = intrinsics.getFocal();
     Vector2T principal = intrinsics.getPrincipal();

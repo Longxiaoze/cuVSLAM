@@ -219,6 +219,9 @@ bool TrackEdexApi2(const TestingSettings& settings, const cuvslam::Odometry::Con
       cuvslam::Odometry::ImageSet masks;
       for (uint32_t i = 0; i < cur_sources.size(); i++) {
         auto&& src = cur_sources[i];
+        if (src.data == nullptr) {
+          continue;
+        }
         auto&& mask_src = masks_sources[i];
         auto&& meta = cur_meta[i];
         images.emplace_back(Image{
@@ -254,11 +257,10 @@ bool TrackEdexApi2(const TestingSettings& settings, const cuvslam::Odometry::Con
 
       // Build depth ImageSet for modes that consume depth (RGBD, Multisensor).
       cuvslam::Odometry::ImageSet depths;
-      for (const auto& [cid, dsrc] : depth_sources) {
+      for (CameraId cid = 0; cid < depth_sources.size(); ++cid) {
+        const auto& dsrc = depth_sources[cid];
         if (dsrc.data == nullptr) continue;
-        const auto meta_it = cur_meta.find(cid);
-        if (meta_it == cur_meta.end()) continue;
-        const auto& meta = meta_it->second;
+        const auto& meta = cur_meta[cid];
         const auto dtype =
             (dsrc.type == ImageSource::Type::F32) ? ImageData::DataType::FLOAT32 : ImageData::DataType::UINT16;
         depths.emplace_back(Image{{dsrc.data, meta.shape.width, meta.shape.height, dsrc.pitch, Image::Encoding::MONO,

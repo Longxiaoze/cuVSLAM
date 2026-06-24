@@ -62,7 +62,7 @@ void MultiSOFGPU::LaunchTrackingPrimaryToSecondary(CameraId primary_id, CameraId
                                                    const std::vector<camera::Observation>& primary_obs,
                                                    std::vector<camera::Observation>* /* secondary_obs */) {
   const ImageContextPtr primary_image = curr_images[primary_id];
-  const ImageSource& secondary_source = curr_sources.at(secondary_id);
+  const ImageSource& secondary_source = curr_sources[secondary_id];
   const ImageContextPtr secondary_image = curr_images[secondary_id];
 
   const camera::ICameraModel& intrinsicsP = *rig_.intrinsics[primary_id];
@@ -122,16 +122,15 @@ void MultiSOFGPU::LaunchTrackingPrimaryToSecondary(CameraId primary_id, CameraId
   tracker.was_launched = true;
 }
 
-void MultiSOFGPU::GetTrackingResults(std::unordered_map<CameraId, std::vector<camera::Observation>>& observations) {
-  std::unordered_map<CameraId, std::vector<camera::Observation>> secondary_observations;
+void MultiSOFGPU::GetTrackingResults(MulticamObservations& observations) {
+  std::vector<std::vector<camera::Observation>> secondary_observations(observations.size());
   const auto& primary_cams = fid_.primary_cameras();
 
   for (CameraId primary_id : primary_cams) {
-    auto it = observations.find(primary_id);
-    if (it == observations.end()) {
+    if (primary_id >= observations.size()) {
       continue;
     }
-    const std::vector<camera::Observation>& primary_obs = it->second;
+    const std::vector<camera::Observation>& primary_obs = observations[primary_id];
     const auto& secondary_cams = fid_.secondary_cameras(primary_id);
 
     for (CameraId secondary_id : secondary_cams) {
@@ -168,7 +167,8 @@ void MultiSOFGPU::GetTrackingResults(std::unordered_map<CameraId, std::vector<ca
     }
   }
 
-  for (auto& [cam_id, obs_vector] : secondary_observations) {
+  for (CameraId cam_id = 0; cam_id < secondary_observations.size(); ++cam_id) {
+    auto& obs_vector = secondary_observations[cam_id];
     auto& x = observations[cam_id];
     std::move(obs_vector.begin(), obs_vector.end(), std::back_inserter(x));
   }

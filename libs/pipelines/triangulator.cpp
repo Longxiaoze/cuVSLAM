@@ -34,9 +34,9 @@ std::vector<Landmark> MulticamTriangulator::triangulate(const Isometry3T& world_
   std::vector<Landmark> out;
   out.reserve(observations.size());
 
-  std::unordered_map<CameraId, Isometry3T> world_from_cam;
+  std::vector<Isometry3T> world_from_cam(rig_.num_cameras);
   for (CameraId cam_id = 0; cam_id < static_cast<CameraId>(rig_.num_cameras); cam_id++) {
-    world_from_cam.insert({cam_id, world_from_rig * rig_.camera_from_rig[cam_id].inverse()});
+    world_from_cam[cam_id] = world_from_rig * rig_.camera_from_rig[cam_id].inverse();
   }
 
   std::unordered_map<TrackId, std::vector<obs_ref>> obs_map;

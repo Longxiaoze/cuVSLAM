@@ -72,7 +72,7 @@ static void RunImuSbaInit(const map::UnifiedMap::SubMap& recent_map, const Vecto
   if (problem.num_fixed_key_frames < 1) return;
 
   // Precompute world_from_cam transforms using IMU-refined poses (gravity_cache)
-  std::vector<std::unordered_map<CameraId, Isometry3T>> world_from_cam(n);
+  std::vector<std::vector<Isometry3T>> world_from_cam(n, std::vector<Isometry3T>(rig.num_cameras));
   for (size_t i = 0; i < n; i++) {
     Isometry3T world_from_rig_i = gravity_cache[i].w_from_imu * calib.rig_from_imu().inverse();
     for (CameraId cam_id = 0; cam_id < static_cast<CameraId>(rig.num_cameras); cam_id++) {
@@ -556,11 +556,10 @@ bool SolverSfMInertial::solveNextFrame(int64_t time_ns, const sof::FrameState& f
   obs_vector_.clear();
   size_t num_observations = 0;
   for (const auto& cam_observations : observations) {
-    num_observations += cam_observations.second.size();
+    num_observations += cam_observations.size();
   }
   obs_vector_.reserve(num_observations);
-  for (const auto& cam_observations : observations) {
-    const auto& obs = cam_observations.second;
+  for (const auto& obs : observations) {
     std::copy(obs.begin(), obs.end(), std::back_inserter(obs_vector_));
   }
 

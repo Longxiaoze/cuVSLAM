@@ -40,7 +40,7 @@ public:
 
   bool trackNextFrame(const Sources& curr_sources, Images& curr_images, const Images& prev_images,
                       const Sources& masks_sources, const Isometry3T& predicted_world_from_rig,
-                      std::unordered_map<CameraId, std::vector<camera::Observation>>& observations, FrameState& state,
+                      MulticamObservations& observations, FrameState& state,
                       const odom::TrackPerFrameSettings& per_frame) final;
 
   void reset_keyframe_selector() override;
@@ -50,7 +50,7 @@ protected:
                                                 Images& curr_images,
                                                 const std::vector<camera::Observation>& primary_obs,
                                                 std::vector<camera::Observation>* secondary_obs = nullptr) = 0;
-  virtual void GetTrackingResults(std::unordered_map<CameraId, std::vector<camera::Observation>>& observations) = 0;
+  virtual void GetTrackingResults(MulticamObservations& observations) = 0;
   virtual void StartKeyframe() = 0;
 
   struct TracksVectorAndCam {

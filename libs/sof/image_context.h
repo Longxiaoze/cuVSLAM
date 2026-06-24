@@ -19,7 +19,7 @@
 
 #include <memory>
 #include <mutex>
-#include <unordered_map>
+#include <vector>
 
 #include "common/image.h"
 
@@ -112,5 +112,7 @@ private:
 };
 
 using ImageContextPtr = std::shared_ptr<ImageContext>;
-using Images = std::unordered_map<CameraId, sof::ImageContextPtr>;
+
+// Camera-indexed vector sized to rig.num_cameras; nullptr means this camera is absent in the frame.
+using Images = std::vector<sof::ImageContextPtr>;
 }  // namespace cuvslam::sof

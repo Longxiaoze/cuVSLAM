@@ -184,15 +184,21 @@ void LoopClosureSolverSimple::SelectLandmarksCandidates(const LoopClosureTask& t
   std::vector<LandmarkId> lsi_candidate_ids;
   {
     std::vector<CameraId> cam_ids;
-    for (const auto& [cam_id, image] : task.current_images) {
-      cam_ids.push_back(cam_id);
+    for (CameraId cam_id = 0; cam_id < task.current_images.size(); ++cam_id) {
+      if (task.current_images[cam_id] != nullptr) {
+        cam_ids.push_back(cam_id);
+      }
     }
     landmarks_spatial_index.QueryLandmarksByCameraPose(task.guess_world_from_rig, cam_ids, *task.pose_graph_hypothesis,
                                                        query_options,
                                                        [&](LandmarkId id) { lsi_candidate_ids.push_back(id); });
   }
 
-  for (const auto& [cam_id, image] : task.current_images) {
+  for (CameraId cam_id = 0; cam_id < task.current_images.size(); ++cam_id) {
+    const auto& image = task.current_images[cam_id];
+    if (image == nullptr) {
+      continue;
+    }
     auto camera_from_world_guess = rig_.camera_from_rig[cam_id] * task.guess_world_from_rig.inverse();
     auto& intrinsics = *rig_.intrinsics[cam_id];
     Matrix2T default_info = camera::ObservationInfoUVToNormUV(intrinsics, camera::GetDefaultObservationInfoUV());

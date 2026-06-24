@@ -17,6 +17,7 @@
 
 #include "slam/async_slam/async_slam.h"
 
+#include <algorithm>
 #include <string>
 
 #include "common/coordinate_system.h"
@@ -40,7 +41,9 @@ namespace {
 void AddFakeKeyframeForLocalizedPose(LocalizerAndMapper& slam, KeyFrameId from_keyframe_id,
                                      const Isometry3T& pose_in_slam, int64_t timestamp_ns, const sof::Images& images,
                                      const std::string& frame_information) {
-  if (images.empty()) {
+  const auto first_image =
+      std::find_if(images.begin(), images.end(), [](const auto& image) { return image != nullptr; });
+  if (first_image == images.end()) {
     return;
   }
   const Isometry3T* maybe_from_keyframe_pose = slam.GetMap().GetPoseGraphHypothesis().GetKeyframePose(from_keyframe_id);
@@ -53,7 +56,7 @@ void AddFakeKeyframeForLocalizedPose(LocalizerAndMapper& slam, KeyFrameId from_k
 
   VOFrameData empty_frame_data;
   // all frame_ids are guaranteed to be the same
-  empty_frame_data.frame_id = images.begin()->second->get_image_meta().frame_id;
+  empty_frame_data.frame_id = (*first_image)->get_image_meta().frame_id;
   empty_frame_data.timestamp_ns = timestamp_ns;
   empty_frame_data.frame_information = frame_information;
   slam.AddKeyframe(delta, empty_frame_data, images);

@@ -51,20 +51,18 @@ void logCameraImages(const Metas& meta, const Sources& images, const std::vector
   for (size_t cam_index = 0; cam_index < cam_ids.size(); cam_index++) {
     const CameraId cam_id = cam_ids[cam_index];
 
-    try {
-      const auto& image = images.at(cam_id);
-      const auto& meta_data = meta.at(cam_id);
-
-      // Log the image
-      visualizer.getRecordingStream().log(
-          viewport_names.at(cam_index),
-          rerun::Image(static_cast<const uint8_t*>(image.data),
-                       {static_cast<uint32_t>(meta_data.shape.width), static_cast<uint32_t>(meta_data.shape.height)},
-                       rerun::datatypes::ColorModel::L));
-    } catch (const std::out_of_range&) {
-      // Skip this camera if image or metadata is not available
+    if (cam_id >= images.size() || cam_id >= meta.size() || images[cam_id].data == nullptr) {
       continue;
     }
+    const auto& image = images[cam_id];
+    const auto& meta_data = meta[cam_id];
+
+    // Log the image
+    visualizer.getRecordingStream().log(
+        viewport_names.at(cam_index),
+        rerun::Image(static_cast<const uint8_t*>(image.data),
+                     {static_cast<uint32_t>(meta_data.shape.width), static_cast<uint32_t>(meta_data.shape.height)},
+                     rerun::datatypes::ColorModel::L));
   }
 }
 

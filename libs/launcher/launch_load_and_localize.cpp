@@ -18,6 +18,8 @@
 #include "launcher/base_launcher.h"
 #include "utils/image_loader.h"
 
+#include <algorithm>
+
 #include "gflags/gflags.h"
 
 DEFINE_int32(slam_simulate_slow_map_load, 0, "Delay in ms after map loading.");
@@ -93,7 +95,7 @@ void LaunchLoadMapAndLocalize(slam::AsyncSlam& slam, int64_t timestamp_ns, const
   const Isometry3T guess_pose = ReadGuessPoseFromGFlags();
 
   const bool user_provide_image = !FLAGS_slam_localize_image.empty();  // user provide image path for localization
-  sof::Images user_provided_images;
+  sof::Images user_provided_images(std::max<size_t>(current_images.size(), 1), nullptr);
   if (user_provide_image) {
     user_provided_images[0] = LoadImage(FLAGS_slam_localize_image, use_gpu);
     if (!user_provided_images[0]) {

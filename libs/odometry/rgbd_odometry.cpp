@@ -17,6 +17,8 @@
 
 #include "odometry/rgbd_odometry.h"
 
+#include <algorithm>
+
 #include "math/twist.h"
 #include "pipelines/feature_predictor.h"
 #include "sof/sof_create.h"
@@ -32,10 +34,7 @@ RGBDOdometry::RGBDOdometry(const camera::Rig& rig, const camera::FrustumIntersec
       map_(20),
       feature_predictor_(std::make_shared<pipelines::FeaturePredictor>(map_, rig)),
       solver_(map_, rig, settings.sba_settings) {
-  observations_.reserve(rig.num_cameras);
-  for (CameraId cam_id = 0; cam_id < rig.num_cameras; ++cam_id) {
-    observations_.try_emplace(cam_id);
-  }
+  observations_.resize(rig.num_cameras);
 
   sof::Implementation implementation = sof::Implementation::kCPU;
   if (use_gpu) {
@@ -59,7 +58,9 @@ void RGBDOdometry::reset() {
 bool RGBDOdometry::track(const Sources& curr_sources, const DepthSources& depth_sources, sof::Images& curr_images,
                          const sof::Images& prev_images, const Sources& masks_sources, Isometry3T& delta,
                          Matrix6T& static_info_exp, const TrackPerFrameSettings& per_frame_setting) {
-  if (curr_images.empty()) {
+  const auto first_image = std::find_if(curr_images.begin(), curr_images.end(),
+                                        [](const sof::ImageContextPtr& image) { return image != nullptr; });
+  if (first_image == curr_images.end()) {
     reset();
     delta = Isometry3T::Identity();
     static_info_exp.setZero();
@@ -67,7 +68,7 @@ bool RGBDOdometry::track(const Sources& curr_sources, const DepthSources& depth_
     return false;
   }
   TRACE_EVENT ev = profiler_domain_.trace_event("RGBDOdometry::track()", profiler_color_);
-  const int64_t timestamp = curr_images.begin()->second->get_image_meta().timestamp;  // current frame timestamp
+  const int64_t timestamp = (*first_image)->get_image_meta().timestamp;  // current frame timestamp
   Isometry3T predicted_world_from_rig = prev_world_from_rig_;
 
   if (settings_.use_prediction) {
@@ -76,7 +77,7 @@ bool RGBDOdometry::track(const Sources& curr_sources, const DepthSources& depth_
 
   sof::FrameState frame_type;
   for (auto& cam_observations : observations_) {
-    cam_observations.second.clear();
+    cam_observations.clear();
   }
 
   const bool track_result =
@@ -98,18 +99,19 @@ bool RGBDOdometry::track(const Sources& curr_sources, const DepthSources& depth_
   bool depth_icp = false;
   CameraId camera_id_icp;
 
-  for (const auto& [cam_id, image] : curr_images) {
+  for (CameraId cam_id = 0; cam_id < curr_images.size(); ++cam_id) {
+    const auto& image = curr_images[cam_id];
+    if (image == nullptr) {
+      continue;
+    }
     if (image->support_depth()) {
       camera_id_icp = cam_id;
 
-      const auto& depthptr = depth_sources.at(cam_id);
+      const auto& depthptr = depth_sources[cam_id];
 
       const ImageSource* mask_source = nullptr;
-      auto it = masks_sources.find(cam_id);
-      if (it != masks_sources.end()) {
-        if (it->second.data != nullptr) {
-          mask_source = &it->second;
-        }
+      if (masks_sources[cam_id].data != nullptr) {
+        mask_source = &masks_sources[cam_id];
       }
 
       auto depth_pyramids = image->build_gpu_depth_pyramid(depthptr, stream.get_stream(), mask_source);
@@ -128,9 +130,9 @@ bool RGBDOdometry::track(const Sources& curr_sources, const DepthSources& depth_
   if (depth_icp) {
     pnp::IcpInfo depth_info{
         camera_id_icp,
-        curr_images.at(camera_id_icp)->gpu_image_pyramid(),
-        curr_images.at(camera_id_icp)->gpu_gradient_pyramid(),
-        curr_images.at(camera_id_icp)->gpu_depth_pyramid()->get(),
+        curr_images[camera_id_icp]->gpu_image_pyramid(),
+        curr_images[camera_id_icp]->gpu_gradient_pyramid(),
+        curr_images[camera_id_icp]->gpu_depth_pyramid()->get(),
     };
 
     inputs.depth_info = &depth_info;

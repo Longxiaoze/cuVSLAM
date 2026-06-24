@@ -15,6 +15,7 @@
  * of the software or derivative works thereof, you agree to be bound by this License.
  */
 
+#include <algorithm>
 #include <functional>
 #include <vector>
 
@@ -121,7 +122,8 @@ void LocalizerAndMapper::AddKeyframe(const Isometry3T& from_last_keyframe, const
     }
   }
 
-  if (!info.empty() && !images.empty()) {
+  const bool has_images = std::any_of(images.begin(), images.end(), [](const auto& image) { return image != nullptr; });
+  if (!info.empty() && has_images) {
     std::vector<TrackId> track_ids;
     std::vector<Vector2T> desc_inputs;
     for (const auto& [cam_id, desc_info_vec] : info) {
@@ -136,8 +138,11 @@ void LocalizerAndMapper::AddKeyframe(const Isometry3T& from_last_keyframe, const
       }
 
       // Create new descriptors
+      if (cam_id >= images.size() || images[cam_id] == nullptr) {
+        continue;
+      }
       std::vector<FeatureDescriptor> create_descriptor_output;
-      map_.feature_descriptor_ops_->CreateDescriptors(images.at(cam_id), desc_inputs, create_descriptor_output);
+      map_.feature_descriptor_ops_->CreateDescriptors(images[cam_id], desc_inputs, create_descriptor_output);
       // copy descriptors to staging3d_
       for (size_t i = 0; i < track_ids.size(); i++) {
         if (i >= create_descriptor_output.size()) {
@@ -156,7 +161,7 @@ void LocalizerAndMapper::AddKeyframe(const Isometry3T& from_last_keyframe, const
   to_remove_.reserve(staging3d_.size());
 
   for (auto& [track_id, staging] : staging3d_) {
-    if (images.find(staging.cam_id) == images.end()) {
+    if (staging.cam_id >= images.size() || images[staging.cam_id] == nullptr) {
       continue;
     }
 

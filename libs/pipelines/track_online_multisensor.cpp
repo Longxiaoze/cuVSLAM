@@ -42,11 +42,10 @@ void flatten_observations(const MulticamObservations& multicam_obs, std::vector<
   obs_vector.clear();
   size_t num_observations = 0;
   for (const auto& cam_observations : multicam_obs) {
-    num_observations += cam_observations.second.size();
+    num_observations += cam_observations.size();
   }
   obs_vector.reserve(num_observations);
-  for (const auto& cam_observations : multicam_obs) {
-    const auto& observations = cam_observations.second;
+  for (const auto& observations : multicam_obs) {
     std::copy(observations.begin(), observations.end(), std::back_inserter(obs_vector));
   }
 }
@@ -125,8 +124,7 @@ void SolverSfMMultisensor::reset() {
 }
 
 bool SolverSfMMultisensor::solveNextFrame(int64_t time_ns, const sof::FrameState& frameState,
-                                          const MulticamObservations& observations,
-                                          const std::unordered_map<CameraId, const pnp::RGBDInfo*>& depth_infos,
+                                          const MulticamObservations& observations, const pnp::RGBDInfos& depth_infos,
                                           Isometry3T& world_from_rig, Matrix6T& static_info_exp,
                                           std::vector<Track2D>* tracks2d, Tracks3DMap* tracks3d) {
   if (with_imu_) {
@@ -137,10 +135,11 @@ bool SolverSfMMultisensor::solveNextFrame(int64_t time_ns, const sof::FrameState
                                   tracks2d, tracks3d);
 }
 
-bool SolverSfMMultisensor::solveNextFrameVisualOnly(
-    int64_t time_ns, const sof::FrameState& frameState, const MulticamObservations& observations,
-    const std::unordered_map<CameraId, const pnp::RGBDInfo*>& depth_infos, Isometry3T& world_from_rig,
-    Matrix6T& static_info_exp, std::vector<Track2D>* tracks2d, Tracks3DMap* tracks3d) {
+bool SolverSfMMultisensor::solveNextFrameVisualOnly(int64_t time_ns, const sof::FrameState& frameState,
+                                                    const MulticamObservations& observations,
+                                                    const pnp::RGBDInfos& depth_infos, Isometry3T& world_from_rig,
+                                                    Matrix6T& static_info_exp, std::vector<Track2D>* tracks2d,
+                                                    Tracks3DMap* tracks3d) {
   TRACE_EVENT ev = profiler_domain_.trace_event("SolverSfMMultisensor::solveNextFrame()", profiler_color_);
 
   flatten_observations(observations, obs_vector_);
@@ -195,9 +194,9 @@ bool SolverSfMMultisensor::solveNextFrameVisualOnly(
 
 bool SolverSfMMultisensor::solveNextFrameInertial(int64_t time_ns, const sof::FrameState& frameState,
                                                   const MulticamObservations& observations,
-                                                  const std::unordered_map<CameraId, const pnp::RGBDInfo*>& depth_infos,
-                                                  Isometry3T& world_from_rig, Matrix6T& static_info_exp,
-                                                  std::vector<Track2D>* tracks2d, Tracks3DMap* tracks3d) {
+                                                  const pnp::RGBDInfos& depth_infos, Isometry3T& world_from_rig,
+                                                  Matrix6T& static_info_exp, std::vector<Track2D>* tracks2d,
+                                                  Tracks3DMap* tracks3d) {
   TRACE_EVENT ev = profiler_domain_.trace_event("SolverSfMMultisensor::solveNextFrame(inertial)", profiler_color_);
 
   flatten_observations(observations, obs_vector_);
@@ -267,8 +266,8 @@ bool SolverSfMMultisensor::solveNextFrameInertial(int64_t time_ns, const sof::Fr
 
 void SolverSfMMultisensor::process_keyframe(int64_t time_ns, const Isometry3T& world_from_rig,
                                             const std::vector<camera::Observation>& obs,
-                                            const std::unordered_map<CameraId, const pnp::RGBDInfo*>& depth_infos,
-                                            const map::State& state, const sba_imu::IMUPreintegration& preint) {
+                                            const pnp::RGBDInfos& depth_infos, const map::State& state,
+                                            const sba_imu::IMUPreintegration& preint) {
   TRACE_EVENT kf_ev = profiler_domain_.trace_event("keyframe_processing");
 
   std::vector<Landmark> landmarks;

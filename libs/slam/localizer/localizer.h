@@ -17,6 +17,7 @@
 
 #pragma once
 
+#include <algorithm>
 #include <queue>
 #include <string>
 
@@ -84,7 +85,10 @@ private:
     bool valid_ = false;
     sof::Images images_;
 
-    FrameId frame_id() const { return images_.begin()->second->get_image_meta().frame_id; }
+    FrameId frame_id() const {
+      auto image = std::find_if(images_.begin(), images_.end(), [](const auto& image) { return image != nullptr; });
+      return image == images_.end() ? FrameId{} : (*image)->get_image_meta().frame_id;
+    }
     bool is_valid() const { return valid_; }
   };
 

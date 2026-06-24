@@ -56,24 +56,22 @@ public:
   // Refreshes the depth-point map after the per-frame pose has been finalized so the next frame's
   // ICP factor is anchored in the latest world frame. Returns true when new depth points were
   // added (so callers can log/visualize them).
-  bool update_post_solve(const std::unordered_map<CameraId, const pnp::RGBDInfo*>& depth_infos,
-                         const Isometry3T& world_from_rig);
+  bool update_post_solve(const pnp::RGBDInfos& depth_infos, const Isometry3T& world_from_rig);
 
   // Builds the landmarks attached to a new keyframe. Always runs the multi-camera triangulator;
   // additionally lifts mono tracks via per-camera depth when depth is available.
   std::vector<Landmark> build_keyframe_landmarks(const Isometry3T& world_from_rig,
                                                  const std::vector<camera::Observation>& observations,
-                                                 const std::unordered_map<CameraId, const pnp::RGBDInfo*>& depth_infos);
+                                                 const pnp::RGBDInfos& depth_infos);
 
   // Updates the plane map at keyframe boundaries. No-op when depth is not available.
-  void update_at_keyframe(const std::unordered_map<CameraId, const pnp::RGBDInfo*>& depth_infos,
-                          const Isometry3T& world_from_rig);
+  void update_at_keyframe(const pnp::RGBDInfos& depth_infos, const Isometry3T& world_from_rig);
 
 private:
   // Builds DepthCameraInfo records for cameras with depth so the plane / depth-point GPU passes
   // can run with up-to-date world poses. Empty input yields an empty result.
-  std::vector<map::DepthCameraInfo> build_depth_camera_infos(
-      const std::unordered_map<CameraId, const pnp::RGBDInfo*>& depth_infos, const Isometry3T& world_from_rig) const;
+  std::vector<map::DepthCameraInfo> build_depth_camera_infos(const pnp::RGBDInfos& depth_infos,
+                                                             const Isometry3T& world_from_rig) const;
 
   const camera::Rig& rig_;
   MulticamTriangulator triangulator_;

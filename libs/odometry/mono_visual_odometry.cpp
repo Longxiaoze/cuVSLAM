@@ -17,6 +17,7 @@
 
 #include "odometry/mono_visual_odometry.h"
 
+#include <algorithm>
 #include <memory>
 
 #include "pipelines/track_online_mono.h"
@@ -57,13 +58,22 @@ bool MonoVisualOdometry::track(const Sources& curr_sources, [[maybe_unused]] con
                                Isometry3T& delta, Matrix6T& static_info_exp,
                                const TrackPerFrameSettings& per_frame_setting) {
   const sof::Settings& effective_sof = per_frame_setting.sof;
-  assert(depth_sources.empty());
+  assert(std::none_of(depth_sources.begin(), depth_sources.end(),
+                      [](const ImageSource& source) { return source.data != nullptr; }));
   const CameraId camera_id = 0;
-  const ImageSource& left_curr_source = curr_sources.at(camera_id);
-  sof::ImageContextPtr left_curr_image = curr_images.at(camera_id);
+  const size_t camera_idx = static_cast<size_t>(camera_id);
+  if (camera_idx >= curr_sources.size() || camera_idx >= curr_images.size() ||
+      curr_sources[camera_idx].data == nullptr || curr_images[camera_idx] == nullptr) {
+    delta = Isometry3T::Identity();
+    static_info_exp.setZero();
+    TraceError("Failed to track, mono image is not available");
+    return false;
+  }
+  const ImageSource& left_curr_source = curr_sources[camera_idx];
+  sof::ImageContextPtr left_curr_image = curr_images[camera_idx];
   sof::ImageContextPtr left_prev_image = nullptr;
-  if (!prev_images.empty()) {
-    left_prev_image = prev_images.at(camera_id);
+  if (camera_idx < prev_images.size()) {
+    left_prev_image = prev_images[camera_idx];
   }
 
   sof::FrameState frame_type;
@@ -73,11 +83,9 @@ bool MonoVisualOdometry::track(const Sources& curr_sources, [[maybe_unused]] con
   if (settings_.use_prediction) {
     do_predict(&prediction_model_, timestamp, predicted_world_from_rig);
   }
-  const ImageSource* mask_src = nullptr;
-  const auto mask_src_it = masks_sources.find(camera_id);
-  if (mask_src_it != masks_sources.end()) {
-    mask_src = &(mask_src_it->second);
-  }
+  const ImageSource* mask_src = (camera_idx < masks_sources.size() && masks_sources[camera_idx].data != nullptr)
+                                    ? &masks_sources[camera_idx]
+                                    : nullptr;
 
   const sof::MonoSOFFrameSettings sof_frame_settings{effective_sof, per_frame_setting.kf};
   feature_tracker_->track(sof::ImageAndSource(left_curr_source, left_curr_image), left_prev_image,

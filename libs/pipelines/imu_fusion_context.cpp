@@ -70,8 +70,7 @@ bool check_imu_drops(sba_imu::IMUPreintegration& preint, const imu::ImuCalibrati
 // the caller no longer needs to recompute velocity from the visual translation delta.
 bool run_rgbd_inertial_solve(const pnp::MultisensorPoseEstimator& estimator, const imu::ImuCalibration& calib,
                              const std::unordered_map<TrackId, Vector3T>& landmarks,
-                             const std::vector<camera::Observation>& observations,
-                             const std::unordered_map<CameraId, const pnp::RGBDInfo*>& depth_infos,
+                             const std::vector<camera::Observation>& observations, const pnp::RGBDInfos& depth_infos,
                              const std::vector<map::Plane>& planes, const std::vector<Vector3T>& depth_points,
                              const Vector3T& gravity, sba_imu::Pose& prev_pose, sba_imu::Pose& curr_pose) {
   // Seed the LM with an IMU-integrated pose prediction for fast convergence.
@@ -183,9 +182,8 @@ ImuFusionContext::FramePrep ImuFusionContext::prepare_frame(int64_t time_ns) {
 
 bool ImuFusionContext::solve_inertial(const std::unordered_map<TrackId, Vector3T>& landmarks,
                                       const std::vector<camera::Observation>& observations,
-                                      const std::unordered_map<CameraId, const pnp::RGBDInfo*>& depth_infos,
-                                      const std::vector<map::Plane>& planes, const std::vector<Vector3T>& depth_points,
-                                      int64_t time_ns) {
+                                      const pnp::RGBDInfos& depth_infos, const std::vector<map::Plane>& planes,
+                                      const std::vector<Vector3T>& depth_points, int64_t time_ns) {
   std::optional<Vector3T> maybe_gravity = map_.get_gravity();
   if (!maybe_gravity) {
     return false;
@@ -212,9 +210,8 @@ bool ImuFusionContext::solve_inertial(const std::unordered_map<TrackId, Vector3T
 
 bool ImuFusionContext::solve_visual(const std::unordered_map<TrackId, Vector3T>& landmarks,
                                     const std::vector<camera::Observation>& observations,
-                                    const std::unordered_map<CameraId, const pnp::RGBDInfo*>& depth_infos,
-                                    const std::vector<map::Plane>& planes, const std::vector<Vector3T>& depth_points,
-                                    int64_t time_ns) {
+                                    const pnp::RGBDInfos& depth_infos, const std::vector<map::Plane>& planes,
+                                    const std::vector<Vector3T>& depth_points, int64_t time_ns) {
   TRACE_EVENT ev = profiler_domain_.trace_event("solve_visual");
   const Isometry3T imu_from_rig = calib_.rig_from_imu().inverse();
   Isometry3T rig_from_world = (prev_pose_.w_from_imu * imu_from_rig).inverse();
@@ -455,7 +452,7 @@ void ImuFusionContext::run_imu_sba_init(const map::UnifiedMap::SubMap& recent_ma
     return;
   }
 
-  std::vector<std::unordered_map<CameraId, Isometry3T>> world_from_cam(n);
+  std::vector<std::vector<Isometry3T>> world_from_cam(n, std::vector<Isometry3T>(rig_.num_cameras));
   for (size_t i = 0; i < n; i++) {
     Isometry3T world_from_rig_i = gravity_cache[i].w_from_imu * calib_.rig_from_imu().inverse();
     for (CameraId cam_id = 0; cam_id < static_cast<CameraId>(rig_.num_cameras); cam_id++) {

@@ -75,11 +75,10 @@ bool SolverSfMRGBD::solveNextFrame(int64_t time_ns, const sof::FrameState& frame
   obs_vector_.clear();
   size_t num_observations = 0;
   for (const auto& cam_observations : inputs.observations) {
-    num_observations += cam_observations.second.size();
+    num_observations += cam_observations.size();
   }
   obs_vector_.reserve(num_observations);
-  for (const auto& cam_observations : inputs.observations) {
-    const auto& obs = cam_observations.second;
+  for (const auto& obs : inputs.observations) {
     std::copy(obs.begin(), obs.end(), std::back_inserter(obs_vector_));
   }
 

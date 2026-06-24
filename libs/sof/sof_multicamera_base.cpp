@@ -31,8 +31,8 @@ void MultiSOFBase::reset_keyframe_selector() {
 
 bool MultiSOFBase::trackNextFrame(const Sources& curr_sources, Images& curr_images, const Images& prev_images,
                                   const Sources& masks_sources, const Isometry3T& predicted_world_from_rig,
-                                  std::unordered_map<CameraId, std::vector<camera::Observation>>& observations,
-                                  FrameState& state, const odom::TrackPerFrameSettings& per_frame) {
+                                  MulticamObservations& observations, FrameState& state,
+                                  const odom::TrackPerFrameSettings& per_frame) {
   const sof::Settings& sof_settings = per_frame.sof;
   const odom::KeyFrameSettings& kf_settings = per_frame.kf;
   // is_mono_mode=false: the keyframe override is applied once globally in KFSelector::select
@@ -43,7 +43,7 @@ bool MultiSOFBase::trackNextFrame(const Sources& curr_sources, Images& curr_imag
 
   state = FrameState::None;
 
-  for (auto& [cam_id, obs] : observations) {
+  for (auto& obs : observations) {
     obs.clear();
   }
   int64_t current_time_ns = -1;
@@ -54,25 +54,23 @@ bool MultiSOFBase::trackNextFrame(const Sources& curr_sources, Images& curr_imag
     assert(sof);
     const CameraId cam_id = sof->camera_id();
 
-    auto curr_it = curr_images.find(cam_id);
-    if (curr_it == curr_images.end()) {
+    if (cam_id >= curr_images.size() || curr_images[cam_id] == nullptr) {
       num_failed_sofs++;
       continue;
     }
 
-    const ImageSource& curr_source = curr_sources.at(cam_id);
-    const ImageContextPtr curr_image = curr_it->second;
+    const ImageSource& curr_source = curr_sources[cam_id];
+    const ImageContextPtr curr_image = curr_images[cam_id];
 
     // should be same for all images
     current_time_ns = curr_image->get_image_meta().timestamp;
 
     ImageContextPtr prev_image;
-    auto prev_it = prev_images.find(cam_id);
-    if (prev_it != prev_images.end()) {
-      prev_image = prev_it->second;
+    if (cam_id < prev_images.size()) {
+      prev_image = prev_images[cam_id];
     }
 
-    const ImageSource& mask_src = masks_sources.at(cam_id);
+    const ImageSource& mask_src = masks_sources[cam_id];
     sof->track({curr_source, curr_image}, prev_image, predicted_world_from_rig, sof_frame_settings, &mask_src);
   }
 
@@ -89,8 +87,7 @@ bool MultiSOFBase::trackNextFrame(const Sources& curr_sources, Images& curr_imag
   for (auto& sof : mono_sof_) {
     TRACE_EVENT ev1 = profiler_domain_.trace_event("mono finish", profiler_color_);
     const CameraId cam_id = sof->camera_id();
-    const auto curr_it = curr_images.find(cam_id);
-    if (curr_it == curr_images.end()) {
+    if (cam_id >= curr_images.size() || curr_images[cam_id] == nullptr) {
       continue;
     }
     FrameState mono_state;  // TODO: launch l->r tracking for this stereo camera only if it keyframe
@@ -107,20 +104,18 @@ bool MultiSOFBase::trackNextFrame(const Sources& curr_sources, Images& curr_imag
     // (e.g. Blackwell sm_121), leading to CUDA error 700 after ~200 frames.
     cudaDeviceSynchronize();
     StartKeyframe();
-    size_t num_prim_to_sec_tracks = 0;
     const auto& primary_cams = fid_.primary_cameras();
     for (CameraId primary_cam_id : primary_cams) {
-      if (curr_images.find(primary_cam_id) == curr_images.end()) {
+      if (primary_cam_id >= curr_images.size() || curr_images[primary_cam_id] == nullptr) {
         continue;
       }
       const auto& secondary_cams = fid_.secondary_cameras(primary_cam_id);
       for (CameraId secondary_cam_id : secondary_cams) {
-        if (curr_images.find(secondary_cam_id) == curr_images.end()) {
+        if (secondary_cam_id >= curr_images.size() || curr_images[secondary_cam_id] == nullptr) {
           continue;
         }
         LaunchTrackingPrimaryToSecondary(primary_cam_id, secondary_cam_id, curr_sources, curr_images,
                                          observations[primary_cam_id], &observations[secondary_cam_id]);
-        num_prim_to_sec_tracks++;
       }
     }
     // if (num_prim_to_sec_tracks == 0) {

@@ -20,6 +20,7 @@
 #include <random>
 #include <vector>
 
+#include "common/image.h"
 #include "common/include_gtest.h"
 #include "common/isometry_utils.h"
 #include "common/statistic.h"
@@ -52,6 +53,39 @@ TEST(TestcuVSLAMLimits, TestBasicTrigLimits) {
   EXPECT_EQ(sin_theta, 1.f);
   EXPECT_EQ(theta_tan, 1.f);
   EXPECT_EQ(cos_theta, 0.f);
+}
+
+TEST(TestCameraIndexedContainers, SparseFrameSentinels) {
+  constexpr size_t kNumCameras = 4;
+  Sources sources(kNumCameras);
+  Sources masks(kNumCameras);
+  Metas metas(kNumCameras);
+  DepthSources depth_sources(kNumCameras);
+
+  uint8_t image0 = 1;
+  uint8_t image2 = 2;
+  uint8_t mask2 = 3;
+  float depth0 = 1.0f;
+
+  sources[0].data = &image0;
+  sources[2].data = &image2;
+  masks[2].data = &mask2;
+  depth_sources[0].type = ImageSource::F32;
+  depth_sources[0].data = &depth0;
+  metas[0].camera_index = 0;
+  metas[2].camera_index = 2;
+
+  EXPECT_NE(sources[0].data, nullptr);
+  EXPECT_EQ(sources[1].data, nullptr);
+  EXPECT_NE(sources[2].data, nullptr);
+  EXPECT_EQ(sources[3].data, nullptr);
+
+  EXPECT_EQ(masks[0].data, nullptr);
+  EXPECT_NE(masks[2].data, nullptr);
+
+  EXPECT_NE(depth_sources[0].data, nullptr);
+  EXPECT_EQ(depth_sources[2].data, nullptr);
+  EXPECT_EQ(metas[2].camera_index, 2);
 }
 
 TEST(TestStatisticalVariable, SVTest) {
