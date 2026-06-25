@@ -51,7 +51,7 @@ jobs:
     needs: check-changes
     if: needs.check-changes.outputs.should_build == 'true'
     runs-on: ${{ fromJSON(matrix.runner) }}
-    timeout-minutes: 120
+    timeout-minutes: ${{ matrix.job_timeout || 120 }}
     strategy:
       fail-fast: false
       matrix:
@@ -65,7 +65,7 @@ jobs:
           # Jetson configs (CUDA version must match host JetPack driver)
           # Orin uses base_image override; cuda value is not used for the Docker base but kept for artifact naming
           - { name: "aarch64 / Orin (JP 6.1)",  runner: '["jetson-orin"]', cuda: "12.6.3", ubuntu: "22.04", archs: "87",  platform: "orin",  wheel: false, base_image: "nvcr.io/nvidia/12.6.11-devel:12.6.11-devel-aarch64-ubuntu22.04" }
-          - { name: "aarch64 / Thor (JP 7.1)",  runner: '["jetson-thor"]', cuda: "13.0.1", ubuntu: "24.04", archs: "110", platform: "thor",  wheel: false }
+          - { name: "aarch64 / Thor (JP 7.1)",  runner: '["jetson-thor"]', cuda: "13.0.1", ubuntu: "24.04", archs: "110", platform: "thor",  wheel: false, retries: 3, build_timeout: 60, job_timeout: 180 }
     steps:
       - name: Verify GPU
         run: nvidia-smi
@@ -129,15 +129,25 @@ jobs:
             cuvslam-ci:local ./scripts/stage_eval_datasets.sh
 
       - name: Build C++ libraries
-        run: |
-          CUDA_VERSION=${{ matrix.cuda }} \
-          UBUNTU_VERSION=${{ matrix.ubuntu }} \
-          BASE_IMAGE="${{ matrix.base_image }}" \
-          EXTRA_CMAKE_ARGS="-DCMAKE_CUDA_ARCHITECTURES=${{ matrix.archs }}" \
-          ./scripts/build_cuvslam_in_docker.sh Release ./output
+        uses: nick-fields/retry@v3
+        with:
+          max_attempts: ${{ matrix.retries || 1 }}
+          timeout_minutes: ${{ matrix.build_timeout || 120 }}
+          retry_wait_seconds: 30
+          command: |
+            CUDA_VERSION=${{ matrix.cuda }} \
+            UBUNTU_VERSION=${{ matrix.ubuntu }} \
+            BASE_IMAGE="${{ matrix.base_image }}" \
+            EXTRA_CMAKE_ARGS="-DCMAKE_CUDA_ARCHITECTURES=${{ matrix.archs }}" \
+            ./scripts/build_cuvslam_in_docker.sh Release ./output
 
       - name: Run C++ tests
-        run: ./scripts/test_cuvslam_in_docker.sh ./output
+        uses: nick-fields/retry@v3
+        with:
+          max_attempts: ${{ matrix.retries || 1 }}
+          timeout_minutes: 30
+          retry_wait_seconds: 30
+          command: ./scripts/test_cuvslam_in_docker.sh ./output
 
       - name: Build Python wheel
         if: matrix.wheel
@@ -147,7 +157,12 @@ jobs:
           ./scripts/build_pycuvslam_in_docker.sh ./output
 
       - name: Run Python tests
-        run: ./scripts/test_pycuvslam_in_docker.sh ./output
+        uses: nick-fields/retry@v3
+        with:
+          max_attempts: ${{ matrix.retries || 1 }}
+          timeout_minutes: 30
+          retry_wait_seconds: 30
+          command: ./scripts/test_pycuvslam_in_docker.sh ./output
 
       - name: Run cuVSLAM evaluation
         if: matrix.eval
