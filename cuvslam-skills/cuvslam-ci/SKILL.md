@@ -1,0 +1,70 @@
+---
+name: cuvslam-ci
+description: Use when working on cuVSLAM CI/CD - the GitHub Actions nightly and PR-verify pipelines, dataset provisioning and staging, the evaluation run and KPI reporting, the build/test/lint matrix, branch rulesets, or repository secrets and variables. Covers adding a dataset, changing dataset format or packing, and controlling which datasets run in PR versus nightly.
+---
+
+# cuVSLAM CI/CD
+
+CI/CD runs build, unit test, lint, dataset evaluation, dataset provisioning, and
+nightly releases on GitHub Actions with self-hosted GPU and Jetson runners. This
+file is the task entry point. Read [reference.md](reference.md) for the
+architecture, the secrets and variables, and the load-bearing constraints before
+changing anything.
+
+## Component map
+
+Workflows (`.github/workflows/`):
+
+- `pr-verify.yml` - lint, then build + unit test on x86, Orin, and Thor; eval on the x86 job (fork-gated); posts a KPI table to the PR comment.
+- `nightly.yml` - build + test matrix; eval on every config; writes per-config KPI history and a GitHub Release with a combined KPI table.
+- `provision-datasets.yml` - manual `workflow_dispatch` on the default branch; downloads, converts, and uploads a dataset tarball to S3. The only writer of dataset storage.
+- `sync-rulesets.yml` - applies `.github/rulesets/default-branch-ruleset.json` through the API.
+
+CI scripts (`scripts/`):
+
+- `Dockerfile.ci` - the shared `cuvslam-ci:local` image (git, python3, pre-commit, GPG-verified AWS CLI, jq).
+- `datasets_config.sh` - dataset registry: `PROVISIONABLE_DATASETS`, `EVAL_DATASET_NAMES`, path helpers, `s3_tarball_uri` (names `<name>.tar`).
+- `provision_dataset.sh` - calls the dataset prepare script, tars the converted output (uncompressed `.tar`), uploads to S3.
+- `stage_eval_datasets.sh` - downloads `<name>.tar` from S3, extracts to the local cache.
+- `check_eval_prerequisites.sh` - verifies credentials/cache and `RUNNER_STORAGE_ROOT`.
+- `eval_cuvslam_in_docker.sh` - host wrapper: mounts datasets and KPI history, starts the eval container.
+- `run_eval.sh` - in container: the active dataset set `DATASETS[]`, runs `cuvslam_app.py`, then the KPI reporter.
+- `cuvslam_kpi_report.py` - KPI math, Markdown `.table`, soft drift check.
+- `kpi_baseline_ranges.json` - committed static drift ranges.
+
+Dataset tooling: `tools/datasets/<name>/` (download + `prepare_<name>.sh`), `tools/cuvslam_app/` (eval runner and `edex_reader.py`).
+
+## Task: add a dataset
+
+1. In `scripts/datasets_config.sh`, add the name to `PROVISIONABLE_DATASETS` and add its `dataset_upload_subdir` case (empty string means the converted root; otherwise the subdir under the converted output).
+2. Add `tools/datasets/<name>/prepare_<name>.sh` (plus a download script) that converts raw data to the edex layout under `--output-dir`. `dataset_prepare_script` resolves `tools/datasets/<name>/prepare_<name>.sh`.
+3. Add the dataset to the `dataset` choice input in `provision-datasets.yml`.
+4. Run Provision dataset (`workflow_dispatch`) on the default branch. It writes `<S3_DATASETS_BUCKET>/<name>.tar`.
+5. Add the name to `EVAL_DATASET_NAMES` in `datasets_config.sh`, and add a record to `DATASETS[]` in `scripts/run_eval.sh`: `LABEL|link_name|subdir|test_config|app_flags`.
+6. Add expected KPI ranges for the dataset to `scripts/kpi_baseline_ranges.json`.
+
+## Task: change dataset format or packing
+
+A dataset moves through four stages. Change the one that owns the format, and keep packing and extraction in sync.
+
+- Conversion (raw to stored layout, e.g. images vs mp4): `tools/datasets/<name>/prepare_<name>.sh` and the converter it calls.
+- Tarball packing: `scripts/provision_dataset.sh` creates an uncompressed `.tar` (`tar -cf`); `s3_tarball_uri` names it `<name>.tar`.
+- Extraction: `scripts/stage_eval_datasets.sh` runs `tar -xf`.
+- In-archive layout consumed at eval: `tools/cuvslam_app/cuvslam_app.py` and `tools/cuvslam_app/edex_reader.py` (already reads per-folder `<folder>.tar` archives).
+
+Do not reintroduce gzip: provisioning uses uncompressed `.tar` to cap memory on the provisioning runner. If packing changes, change extraction in the same MR.
+
+## Task: control the PR vs nightly matrix
+
+- Nightly configs: `nightly.yml` `strategy.matrix.include`. Eval runs on entries flagged `eval: true` (currently all four x86 configs plus Orin and Thor). Every eval-enabled config needs the `RUNNER_STORAGE_ROOT` mount, the `aws` CLI, and the repo secrets/variables on its runner.
+- PR config: `pr-verify.yml` runs eval only on `build-test-x86` (fork-gated). `EVAL_CONFIG` is the static slug label for the PR table.
+- Active dataset set: `DATASETS[]` in `run_eval.sh` is global; PR and nightly run the same set. There is no per-pipeline dataset selection today. To run a different set in PR vs nightly, add an env-selected subset in `run_eval.sh` and have each workflow pass the selector.
+
+## Hard rules
+
+Detail in [reference.md](reference.md). The load-bearing ones:
+
+- Dataset and eval steps stay fork-gated (`if: ... head.repo == github.repository`); never run fork code on dataset runners.
+- Eval uses the read-only `AWS_S3_RO_*` secrets; only `provision-datasets.yml` uses the read-write `AWS_S3_*` pair.
+- KPI history directories and eval artifact names carry the `platform-cuda-ubuntu` slug so matrix configs never overwrite each other.
+- Ruleset, CODEOWNERS, and `.github/workflows/**` changes go in their own `[infra]` MR (enforced by the `isolated-ruleset-change` pre-commit hook).
