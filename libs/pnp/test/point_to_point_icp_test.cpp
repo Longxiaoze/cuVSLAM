@@ -108,9 +108,9 @@ struct TestResources {
       : depth_img(kWidth, kHeight), N(world_points.size()) {
     depth_img.copy(cuvslam::cuda::ToGPU, depth_host.data(), nullptr);
     cudaDeviceSynchronize();
-    cudaMalloc(&d_landmarks, N * sizeof(float3));
+    cudaMalloc(reinterpret_cast<void**>(&d_landmarks), N * sizeof(float3));
     cudaMemcpy(d_landmarks, world_points.data(), N * sizeof(float3), cudaMemcpyHostToDevice);
-    cudaMalloc(&d_cam_from_rig, 16 * sizeof(float));
+    cudaMalloc(reinterpret_cast<void**>(&d_cam_from_rig), 16 * sizeof(float));
     cudaMemcpy(d_cam_from_rig, cam_from_rig_host, 16 * sizeof(float), cudaMemcpyHostToDevice);
   }
 
@@ -124,18 +124,18 @@ struct TestResources {
   // kernel translation unit (kMaxRelDepth in point_to_point_icp_kernel.cu).
   void evaluate(const float* state_host, std::vector<float>& res, std::vector<float>* jac) {
     float* d_state;
-    cudaMalloc(&d_state, 16 * sizeof(float));
+    cudaMalloc(reinterpret_cast<void**>(&d_state), 16 * sizeof(float));
     cudaMemcpy(d_state, state_host, 16 * sizeof(float), cudaMemcpyHostToDevice);
 
     std::vector<float*> h_ptrs(N, d_state);
     float** d_ptrs;
-    cudaMalloc(&d_ptrs, N * sizeof(float*));
+    cudaMalloc(reinterpret_cast<void**>(&d_ptrs), N * sizeof(float*));
     cudaMemcpy(d_ptrs, h_ptrs.data(), N * sizeof(float*), cudaMemcpyHostToDevice);
 
     float* d_res;
-    cudaMalloc(&d_res, N * sizeof(float));
+    cudaMalloc(reinterpret_cast<void**>(&d_res), N * sizeof(float));
     float* d_jac = nullptr;
-    if (jac) cudaMalloc(&d_jac, N * 6 * sizeof(float));
+    if (jac) cudaMalloc(reinterpret_cast<void**>(&d_jac), N * 6 * sizeof(float));
 
     cuvslam::cuda::point_to_point_icp_evaluate(d_landmarks,
                                                const_cast<float const* const*>(reinterpret_cast<float**>(d_ptrs)),

@@ -25,8 +25,8 @@ set(LIBS
 
 if(USE_CUNLS)
     enable_language(CUDA)
+    # Host-only tests; built by the host compiler (not LANGUAGE CUDA) — see libs/map/CMakeLists.txt.
     list(APPEND SOURCES multisensor_pose_estimator_test.cpp point_to_point_icp_test.cpp)
-    set_source_files_properties(multisensor_pose_estimator_test.cpp point_to_point_icp_test.cpp PROPERTIES LANGUAGE CUDA)
     list(APPEND LIBS cunls::cunls)
 endif()
 

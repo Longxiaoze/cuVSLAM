@@ -12,61 +12,62 @@
 # By using, reproducing, modifying, distributing, performing, or displaying any portion or element
 # of the software or derivative works thereof, you agree to be bound by this License.
 
-# Static libcunls.a with CMake package config (cunls::cunls). spdlog and cuDSS are linked into the
-# archive; consumers only need CUDA toolkit math libraries at link time.
+# Build cuNLS (CUDA nonlinear least squares) from source via FetchContent, like the other
+# externals. BUILD_SHARED_LIBS is OFF in this build (see FindExt.cmake), so cuNLS produces a
+# static archive with its own dependencies (spdlog, cuDSS) bundled in; consumers only need the
+# CUDA toolkit math libraries at link time. cuNLS reuses cuVSLAM's already-declared spdlog and
+# googletest FetchContent entries (declared earlier in FindExt.cmake) and downloads a prebuilt
+# cuDSS archive at configure time.
+
+include(FetchContent)
 
 if(NOT USE_CUDA)
     message(FATAL_ERROR "USE_CUNLS requires USE_CUDA")
 endif()
 
-if(CUVSLAM_CUNLS_ROOT STREQUAL "")
-    message(FATAL_ERROR "USE_CUNLS is ON but CUVSLAM_CUNLS_ROOT is empty. Set CUVSLAM_CUNLS_ROOT to the cuNLS install prefix (directory containing include/ and lib/).")
-endif()
+set(CUNLS_VERSION "d0aa5a21019f6d20b063bb1862aea92cd8eea126")  # release tag nightly-2026-06-24
 
-get_filename_component(_cunls_root "${CUVSLAM_CUNLS_ROOT}" ABSOLUTE)
+# Keep cuNLS's own tests and Python bindings out of this build.
+set(BUILD_TESTING OFF)
+set(BUILD_PYTHON_BINDINGS OFF)
 
-if(MSVC)
-    set(_cunls_archive "${_cunls_root}/lib/cunls.lib")
-else()
-    set(_cunls_archive "${_cunls_root}/lib/libcunls.a")
-endif()
-
-if(NOT EXISTS "${_cunls_archive}")
-    message(FATAL_ERROR "cuNLS static library not found at ${_cunls_archive}. Check CUVSLAM_CUNLS_ROOT (${_cunls_root}).")
-endif()
-
-find_package(cunls CONFIG REQUIRED PATHS "${_cunls_root}" NO_DEFAULT_PATH)
-
-if(NOT TARGET cunls::cunls)
-    message(FATAL_ERROR "find_package(cunls) did not define target cunls::cunls")
-endif()
-
-get_target_property(_cunls_type cunls::cunls TYPE)
-if(NOT _cunls_type STREQUAL "STATIC_LIBRARY")
-    message(WARNING "cunls::cunls is not STATIC_LIBRARY (got ${_cunls_type}); cuVSLAM expects a static libcunls.")
-endif()
-
-# Package config lists spdlog and cudss as link dependencies; this build links them inside libcunls.a.
-set_target_properties(cunls::cunls PROPERTIES
-    INTERFACE_LINK_LIBRARIES
-        "CUDA::cudart;\$<LINK_ONLY:CUDA::cusparse>;\$<LINK_ONLY:CUDA::cublas>;\$<LINK_ONLY:CUDA::cusolver>"
+# cuNLS declares cmake_minimum_required(VERSION 3.24), but the Ubuntu 22.04 base images used for
+# Jetson Orin ship cmake 3.22.1. cuNLS does not actually use any 3.24-only feature (it sets an
+# explicit CMAKE_CUDA_ARCHITECTURES list, not 'native'/'all-major', and only DOWNLOAD_EXTRACT_TIMESTAMP
+# carries 3.24 semantics, which degrade harmlessly on 3.22), so we lower its floor to 3.22 at populate
+# time. The sed is idempotent: re-running it on an already-patched tree is a no-op. Revisit this when
+# bumping CUNLS_VERSION in case upstream starts relying on a genuine 3.24 feature.
+FetchContent_Declare(
+    cunls
+    GIT_REPOSITORY https://github.com/nvidia-isaac/cuNLS.git
+    GIT_TAG ${CUNLS_VERSION}
+    PATCH_COMMAND sed -i "s/cmake_minimum_required(VERSION 3.24)/cmake_minimum_required(VERSION 3.22)/" CMakeLists.txt
 )
+FetchContent_MakeAvailable(cunls)
 
-# Install tree may only export Release; reuse the same archive for other single-config build types.
-if(CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
-    string(TOUPPER "${CMAKE_BUILD_TYPE}" _cunls_cfg)
-    if(NOT _cunls_cfg STREQUAL "RELEASE")
-        set_target_properties(cunls::cunls PROPERTIES
-            "IMPORTED_LOCATION_${_cunls_cfg}" "${_cunls_archive}"
-        )
+if(NOT TARGET cunls)
+    message(FATAL_ERROR "cuNLS source build did not define the 'cunls' target")
+endif()
+
+# cuNLS uses directory-scoped include_directories() and does not attach the include root to the
+# 'cunls' target, so expose it here for consumers that #include <cunls/...>.
+target_include_directories(cunls INTERFACE $<BUILD_INTERFACE:${cunls_SOURCE_DIR}>)
+
+# cuNLS headers (pulled in transitively by e.g. libs/pnp) include CCCL/libcudacxx headers such as
+# <cuda/std/array>. On some toolkit layouts (e.g. the Jetson Orin NGC image) these live under
+# <toolkit-include>/cccl rather than directly under <toolkit-include>. cuNLS adds that path to its
+# own directory-scoped include_directories() but does not propagate it on the 'cunls' target, so
+# consumers compiling host (.cpp) translation units that pull in cuNLS headers cannot find them.
+# Propagate the cccl path on the INTERFACE where it exists (no-op on flat toolkit layouts).
+foreach(_cunls_cuda_inc ${CUDAToolkit_INCLUDE_DIRS})
+    if(EXISTS "${_cunls_cuda_inc}/cccl")
+        target_include_directories(cunls INTERFACE $<BUILD_INTERFACE:${_cunls_cuda_inc}/cccl>)
     endif()
+endforeach()
+
+# The rest of cuVSLAM links against the namespaced target; cuNLS only exports that name on install.
+if(NOT TARGET cunls::cunls)
+    add_library(cunls::cunls ALIAS cunls)
 endif()
 
-# Multi-config generators (e.g. MSVC): map other configurations to Release import data.
-set_target_properties(cunls::cunls PROPERTIES
-    MAP_IMPORTED_CONFIG_MINSIZEREL Release
-    MAP_IMPORTED_CONFIG_RELWITHDEBINFO Release
-    MAP_IMPORTED_CONFIG_DEBUG Release
-)
-
-message(STATUS "cuNLS: ${_cunls_root} (static ${_cunls_archive})")
+message(STATUS "cuNLS: building from source (${CUNLS_VERSION})")

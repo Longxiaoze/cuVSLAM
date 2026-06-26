@@ -63,8 +63,10 @@ endif()
 if(USE_CUNLS)
     enable_language(CUDA)
     set(HEADERS ${HEADERS} track_online_multisensor.h depth_maps_context.h imu_fusion_context.h track_lifter.h)
+    # All host-only sources (no device code); built by the host compiler. track_lifter.cpp is not
+    # marked LANGUAGE CUDA — see the note in libs/map/CMakeLists.txt (nvcc cannot parse Eigen's ARM
+    # NEON headers on aarch64).
     set(SOURCES ${SOURCES} track_online_multisensor.cpp depth_maps_context.cpp imu_fusion_context.cpp track_lifter.cpp)
-    set_source_files_properties(track_lifter.cpp PROPERTIES LANGUAGE CUDA)
 endif()
 
 if(USE_RERUN)

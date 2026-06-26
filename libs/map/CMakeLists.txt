@@ -40,8 +40,10 @@ set(LIBS
 if(USE_CUNLS)
     enable_language(CUDA)
     set(HEADERS ${HEADERS} plane_map.h depth_point_map.h)
+    # These are host-only sources (CUDA runtime API + kernel-wrapper calls, no device code), so let
+    # the host compiler build them. Do NOT mark them LANGUAGE CUDA: on aarch64 that routes them
+    # through nvcc, whose frontend cannot parse Eigen's ARM NEON intrinsics (<arm_fp16.h>).
     set(SOURCES ${SOURCES} plane_map.cpp depth_point_map.cpp)
-    set_source_files_properties(plane_map.cpp depth_point_map.cpp PROPERTIES LANGUAGE CUDA)
     set(LIBS ${LIBS} cunls::cunls cuda_modules)
 endif()
 

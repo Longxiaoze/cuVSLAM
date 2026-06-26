@@ -33,15 +33,9 @@ set(SOURCES
 
 add_library(cuda_kernels STATIC ${SOURCES})
 
-if(CUVSLAM_CUDA_ARCH_ALL)
-  # CMake < 3.23 doesn't support "all" in CUDA_ARCHITECTURES property.
-  # Use -arch=all nvcc flag directly (preserves original behavior).
-  set_target_properties(cuda_kernels PROPERTIES CUDA_ARCHITECTURES OFF)
-  target_compile_options(cuda_kernels PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-arch=all>)
-else()
-  set_target_properties(cuda_kernels PROPERTIES CUDA_ARCHITECTURES "${CMAKE_CUDA_ARCHITECTURES}")
-endif()
-
+# CUDA_ARCHITECTURES is initialized from CMAKE_CUDA_ARCHITECTURES, which the root CMakeLists sets for
+# every cuVSLAM CUDA target (an explicit arch list/value, or OFF + global -arch=all for the
+# CMake < 3.23 "all" fallback). No per-target architecture handling is needed here.
 set_target_properties(cuda_kernels PROPERTIES
     CUDA_SEPARABLE_COMPILATION ON
     CUDA_RESOLVE_DEVICE_SYMBOLS ON

@@ -58,10 +58,9 @@ set(CUVSLAM_DATASETS $ENV{HOME}/datasets CACHE PATH "Path to image datasets fold
 set(CUVSLAM_OUTPUT ${CMAKE_BINARY_DIR}/output CACHE PATH "Path to output folder")
 set(CUDAToolkit_ROOT /usr/local/cuda CACHE PATH "Path to installed CUDA toolkit")
 set(CMAKE_CUDA_COMPILER ${CUDAToolkit_ROOT}/bin/nvcc CACHE PATH "Path to installed CUDA compiler")
-set(CUVSLAM_CUNLS_ROOT "" CACHE PATH "Path to cuNLS install prefix (include/ and lib/libcunls.a); required when USE_CUNLS is ON")
 
 option(TREAT_WARNINGS_AS_ERRORS "Treat warnings as error" OFF)
-option(USE_CUNLS "Build with cunls support." OFF)
+option(USE_CUNLS "Build with cunls support." ON)
 option(USE_CERES "Build with ceres support." OFF)
 option(USE_NVTX "Build with nvtx tracing support." OFF)
 option(USE_SLAM_OUTPUT "Build with option to enable debug output of SLAM" OFF)
@@ -81,6 +80,18 @@ include(cmake/FindExt.cmake)
 
 # Add testing functionalities so that we can take advantage of GTest and CTest
 enable_testing()
+
+# CMake < 3.23 fallback (see CUVSLAM_CUDA_ARCH_ALL at the top of this file): "all" is not a valid
+# CUDA_ARCHITECTURES value before 3.23, so build for every architecture by passing -arch=all to nvcc
+# and disabling the per-target architecture list. Applied here, after FindExt(), so it does not
+# affect cuNLS or other FetchContent dependencies (they set their own architectures), and before
+# add_subdirectory() so every cuVSLAM CUDA target inherits it. Without this, targets other than
+# cuda_kernels are left with an empty CUDA_ARCHITECTURES and CMake errors at generate time
+# (CMP0104) on CMake < 3.23 builds that do not pass an explicit -DCMAKE_CUDA_ARCHITECTURES.
+if(CUVSLAM_CUDA_ARCH_ALL)
+  set(CMAKE_CUDA_ARCHITECTURES OFF)
+  add_compile_options($<$<COMPILE_LANGUAGE:CUDA>:-arch=all>)
+endif()
 
 add_subdirectory(libs)
 add_subdirectory(tools)

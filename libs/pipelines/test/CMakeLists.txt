@@ -25,8 +25,8 @@ set(LIBS
 
 if(USE_CUNLS)
     enable_language(CUDA)
+    # Host-only test; built by the host compiler (not LANGUAGE CUDA) — see libs/map/CMakeLists.txt.
     list(APPEND SOURCES track_lifter_test.cpp)
-    set_source_files_properties(track_lifter_test.cpp PROPERTIES LANGUAGE CUDA)
     list(APPEND LIBS cunls::cunls cuda_modules pnp)
 endif()
 

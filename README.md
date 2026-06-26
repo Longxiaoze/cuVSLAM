@@ -178,6 +178,7 @@ All flags have defaults; override with `-DFLAG=VALUE`.
 | Flag | Default | Purpose |
 |------|---------|---------|
 | `USE_CUDA` | ON | CUDA acceleration |
+| `USE_CUNLS` | ON | cuNLS (CUDA nonlinear least squares); requires `USE_CUDA` |
 | `USE_LMDB` | ON | LMDB map database |
 | `USE_RERUN` | OFF | Rerun SDK visualization |
 | `USE_NVTX` | OFF | NVIDIA NVTX profiling |
@@ -185,15 +186,17 @@ All flags have defaults; override with `-DFLAG=VALUE`.
 
 Build types: `Release` (default), `Debug`, `RelWithDebInfo`, `MinSizeRel`. Do not mix types in the same build directory.
 
-### Optional: cuNLS
+### cuNLS
 
-To build with optional **cuNLS** (CUDA nonlinear least squares), install a **static** cuNLS package whose prefix contains `include/` and `lib/libcunls.a`, then configure with:
+**cuNLS** (CUDA nonlinear least squares) is enabled by default (`USE_CUNLS=ON`) and is built from
+source via `FetchContent`, like the other external dependencies — no separate install or path is
+required. The source is pinned in `cmake/ext/cunls.cmake`; cuNLS downloads its own dependencies
+(spdlog is shared with cuVSLAM, cuDSS is fetched as a prebuilt archive) at configure time, so a
+network connection and the CUDA Toolkit are the only prerequisites. The resulting static archive
+is bundled into `libcuvslam`.
 
-```bash
-cmake -S . -B build -DUSE_CUNLS=ON -DCUVSLAM_CUNLS_ROOT=/path/to/cunls/install
-```
-
-`USE_CUDA` must be `ON`. This sets the `USE_CUNLS` compile definition and links `libcunls.a` into `libcuvslam`; use a cuNLS build where dependencies such as spdlog and cuDSS are already incorporated into the static library so no extra packages are required beyond the CUDA Toolkit.
+`USE_CUDA` must be `ON`. To build without cuNLS (and disable the multisensor odometry mode that
+depends on it), configure with `-DUSE_CUNLS=OFF`.
 
 ### Build on Jetson (aarch64)
 
