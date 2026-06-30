@@ -156,7 +156,7 @@ class RerunVisualizer:
             timestamp: Current timestamp
             gravity: Optional gravity vector
         """
-        rr.set_time_sequence("frame", frame_id)
+        rr.set_time("frame", sequence=frame_id)
         rr.log("world/trajectory", rr.LineStrips3D(trajectory), static=True)
 
         self._log_rig_pose(pose.rotation, pose.translation)

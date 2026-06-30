@@ -36,6 +36,7 @@ rr.init('tartan_ground', strict=True, spawn=True)  # launch re-run instance
 # setup rerun views
 rr.send_blueprint(rrb.Blueprint(rrb.TimePanel(state="collapsed"),
                                 rrb.Vertical(
+                                    row_shares=[0.25, 0.5, 0.25],
                                     contents=[
                                         rrb.Horizontal(
                                             contents=[rrb.Spatial2DView(origin='car/cam0', name='front-stereo_left'),
@@ -44,7 +45,19 @@ rr.send_blueprint(rrb.Blueprint(rrb.TimePanel(state="collapsed"),
                                                       rrb.Spatial2DView(origin='car/cam3',  name='back-stereo_right'),
                                                       rrb.Spatial2DView(origin='car/cam8', name='top-stereo_left'),
                                                       rrb.Spatial2DView(origin='car/cam9', name='top-stereo_right'),]),
-                                        rrb.Spatial3DView(name="3D", defaults=[rr.components.ImagePlaneDistance(0.5)]),
+                                        rrb.Spatial3DView(
+                                            name="3D",
+                                            contents=[
+                                                '+ /**',
+                                                '- /car/cam1/**',
+                                                '- /car/cam3/**',
+                                                '- /car/cam5/**',
+                                                '- /car/cam7/**',
+                                                '- /car/cam9/**',
+                                                '- /car/cam11/**',
+                                            ],
+                                            defaults=[rr.Pinhole.from_fields(image_plane_distance=0.5)]
+                                        ),
                                         rrb.Horizontal(
                                             contents=[rrb.Spatial2DView(origin='car/cam4', name='left-stereo_left'),
                                                       rrb.Spatial2DView(origin='car/cam5', name='left-stereo_right'),
@@ -61,6 +74,18 @@ rr.log("/", rr.ViewCoordinates.RIGHT_HAND_Y_DOWN, static=True)
 
 # Load camera configuration from EDEX file
 cameras = read_stereo_edex('tartan_ground.edex')
+
+for i, camera in enumerate(cameras):
+    rr.log('car/cam%s' % i,
+           rr.Transform3D(translation=camera.rig_from_camera.translation,
+                          rotation=rr.Quaternion(xyzw=camera.rig_from_camera.rotation),
+                          relation=rr.TransformRelation.ParentFromChild),
+           rr.Pinhole(image_plane_distance=1.,
+                      image_from_camera=np.array([[camera.focal[0], 0, camera.principal[0]],
+                                                  [0, camera.focal[1], camera.principal[1]],
+                                                  [0, 0, 1]]),
+                      width=camera.size[0], height=camera.size[1]),
+           static=True)
 
 # Set up VSLAM rig and tracker
 rig = vslam.Rig()
@@ -102,7 +127,7 @@ for frame_id in range(num_frames):
     landmarks_colors = [color_from_id(l.id) for l in landmarks]
     trajectory.append(odom_pose.translation)
     # send results to rerun for visualization
-    rr.set_time_sequence('frame', frame_id)
+    rr.set_time('frame', sequence=frame_id)
     rr.log('trajectory', rr.LineStrips3D(trajectory))
     rr.log('final_landmarks', rr.Points3D(list(final_landmarks.values()), radii=0.01))
     rr.log('car', rr.Transform3D(translation=odom_pose.translation, quaternion=odom_pose.rotation))
@@ -112,14 +137,3 @@ for frame_id in range(num_frames):
     for i in range(len(cameras)):
         rr.log('car/cam%s/image' % i, rr.Image(images[i]).compress(jpeg_quality=80))
         rr.log('car/cam%s/observations' % i, rr.Points2D(observations_uv[i], radii=5, colors=observations_colors[i]))
-
-        # show only even cameras in 3D world
-        if not i%2:
-            rr.log('car/cam%s' % i, rr.Transform3D(translation=cameras[i].rig_from_camera.translation,
-                                                        rotation=rr.Quaternion(xyzw=cameras[i].rig_from_camera.rotation),
-                                                        from_parent=False))
-            rr.log('car/cam%s' % i, rr.Pinhole(image_plane_distance=1.,
-                                            image_from_camera=np.array([[cameras[i].focal[0], 0, cameras[i].principal[0]],
-                                                                        [0, cameras[i].focal[1], cameras[i].principal[1]],
-                                                                        [0, 0, 1]]),
-                                            width=cameras[i].size[0], height=cameras[i].size[1]))

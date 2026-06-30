@@ -51,7 +51,7 @@ rr.send_blueprint(rrb.Blueprint(
         ]),
         rrb.Spatial3DView(
             name="3D",
-            defaults=[rr.components.ImagePlaneDistance(0.5)]
+            defaults=[rr.Pinhole.from_fields(image_plane_distance=0.5)]
         )
     ]),
 ), make_active=True)
@@ -149,7 +149,7 @@ for rgb_time, rgb_path, depth_path in rgbd_pairs:
     obs_colors = [color_from_id(o.id) for o in observations[0]]
 
     # Log visualization data
-    rr.set_time_sequence('frame', frame_id)
+    rr.set_time('frame', sequence=frame_id)
     rr.log('trajectory', rr.LineStrips3D(trajectory), static=True)
 
     rr.log(

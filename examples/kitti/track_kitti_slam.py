@@ -16,7 +16,7 @@ import os
 import threading
 import time
 from PIL import Image
-from numpy import loadtxt, asarray, array_equal as np_array_equal, savetxt
+from numpy import loadtxt, asarray, array_equal as np_array_equal, savetxt, timedelta64
 from scipy.spatial.transform import Rotation as R
 import rerun as rr
 import rerun.blueprint as rrb
@@ -118,6 +118,15 @@ def color_from_id(identifier):
     return [(identifier * 17) % 256, (identifier * 31) % 256, (identifier * 47) % 256]
 
 
+KITTI_3D_VIEW_EYE = rrb.EyeControls3D(
+    kind=rrb.Eye3DKind.Orbital,
+    position=(12.0, -9.0, -30.0),
+    look_target=(0.0, 0.0, 8.0),
+    eye_up=(0.0, -1.0, 0.0),
+    speed=25.0,
+)
+
+
 # Setup rerun visualizer
 rr.init('kitti', strict=True, spawn=True)  # launch re-run instance
 
@@ -126,7 +135,15 @@ rr.send_blueprint(rrb.Blueprint(
     rrb.TimePanel(state="collapsed"),
     rrb.Vertical(
         row_shares=[0.6, 0.4],
-        contents=[rrb.Spatial3DView(), rrb.Spatial2DView(origin='car/cam0')]
+        contents=[
+            rrb.Spatial3DView(
+                origin='view_anchor',
+                name='3D',
+                contents=['+ /**'],
+                eye_controls=KITTI_3D_VIEW_EYE
+            ),
+            rrb.Spatial2DView(origin='car/cam0')
+        ]
     )
 ))
 
@@ -308,7 +325,8 @@ for frame in range(IDX, len(timestamps)):
         loop_closure_poses.append(current_lc_poses[-1].pose.translation)
 
     # Send results to rerun for visualization
-    rr.set_time_nanos('timestamp', timestamps[frame])
+    rr.set_time('timestamp', duration=timedelta64(timestamps[frame], 'ns'))
+    rr.log('view_anchor', rr.Transform3D(translation=current_pose.translation))
     rr.log('trajectory', rr.LineStrips3D(trajectory))
     rr.log('trajectory_slam', rr.LineStrips3D(trajectory_slam))
     rr.log('final_landmarks', rr.Points3D(final_landmarks, radii=0.1))

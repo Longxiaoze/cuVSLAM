@@ -77,7 +77,7 @@ def init_rerun():
 def rerun_visualize(tracker, frame, odom_pose, trajectory, image):
     if throttle_vis and frame % 100 != 0:
         return
-    rr.set_time_sequence('frame', frame)
+    rr.set_time('frame', sequence=frame)
     rr.log('trajectory', rr.LineStrips3D(trajectory))  # add static=True for speedup vis
 
     if not rich_vis:

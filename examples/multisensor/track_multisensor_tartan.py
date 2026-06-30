@@ -66,23 +66,26 @@ rr.send_blueprint(rrb.Blueprint(
                         name="IMU Acceleration",
                         origin="world/imu/accel",
                         overrides={
-                            "world/imu/accel/x": rr.SeriesLine.from_fields(color=[255, 0, 0]),
-                            "world/imu/accel/y": rr.SeriesLine.from_fields(color=[0, 255, 0]),
-                            "world/imu/accel/z": rr.SeriesLine.from_fields(color=[0, 0, 255]),
+                            "world/imu/accel/x": rr.SeriesLines(colors=[255, 0, 0]),
+                            "world/imu/accel/y": rr.SeriesLines(colors=[0, 255, 0]),
+                            "world/imu/accel/z": rr.SeriesLines(colors=[0, 0, 255]),
                         },
                     ),
                     rrb.TimeSeriesView(
                         name="IMU Angular Velocity",
                         origin="world/imu/gyro",
                         overrides={
-                            "world/imu/gyro/x": rr.SeriesLine.from_fields(color=[255, 0, 0]),
-                            "world/imu/gyro/y": rr.SeriesLine.from_fields(color=[0, 255, 0]),
-                            "world/imu/gyro/z": rr.SeriesLine.from_fields(color=[0, 0, 255]),
+                            "world/imu/gyro/x": rr.SeriesLines(colors=[255, 0, 0]),
+                            "world/imu/gyro/y": rr.SeriesLines(colors=[0, 255, 0]),
+                            "world/imu/gyro/z": rr.SeriesLines(colors=[0, 0, 255]),
                         },
                     ),
                 ]),
             ]),
-            rrb.Spatial3DView(name="3D", defaults=[rr.components.ImagePlaneDistance(0.5)]),
+            rrb.Spatial3DView(
+                name="3D",
+                defaults=[rr.Pinhole.from_fields(image_plane_distance=0.5)]
+            ),
         ],
     ),
 ), make_active=True)
@@ -172,7 +175,7 @@ for record in frames_metadata:
     landmarks_colors = [color_from_id(l.id) for l in landmarks]
     trajectory.append(odom_pose.translation)
 
-    rr.set_time_sequence('frame', frame_id)
+    rr.set_time('frame', sequence=frame_id)
     rr.log('trajectory', rr.LineStrips3D(trajectory))
     rr.log('final_landmarks', rr.Points3D(list(final_landmarks.values()), radii=0.01))
     rr.log('car', rr.Transform3D(translation=odom_pose.translation, quaternion=odom_pose.rotation))
@@ -187,7 +190,7 @@ for record in frames_metadata:
         rr.log(f'car/cam{i}',
                rr.Transform3D(translation=cameras[i].rig_from_camera.translation,
                               rotation=rr.Quaternion(xyzw=cameras[i].rig_from_camera.rotation),
-                              from_parent=False))
+                              relation=rr.TransformRelation.ParentFromChild))
         rr.log(f'car/cam{i}',
                rr.Pinhole(image_plane_distance=1.,
                           image_from_camera=np.array([[cameras[i].focal[0], 0, cameras[i].principal[0]],
@@ -196,12 +199,12 @@ for record in frames_metadata:
                           width=cameras[i].size[0], height=cameras[i].size[1]))
 
     if last_accel is not None:
-        rr.log("world/imu/accel/x", rr.Scalar(last_accel[0]))
-        rr.log("world/imu/accel/y", rr.Scalar(last_accel[1]))
-        rr.log("world/imu/accel/z", rr.Scalar(last_accel[2]))
-        rr.log("world/imu/gyro/x", rr.Scalar(last_gyro[0]))
-        rr.log("world/imu/gyro/y", rr.Scalar(last_gyro[1]))
-        rr.log("world/imu/gyro/z", rr.Scalar(last_gyro[2]))
+        rr.log("world/imu/accel/x", rr.Scalars(last_accel[0]))
+        rr.log("world/imu/accel/y", rr.Scalars(last_accel[1]))
+        rr.log("world/imu/accel/z", rr.Scalars(last_accel[2]))
+        rr.log("world/imu/gyro/x", rr.Scalars(last_gyro[0]))
+        rr.log("world/imu/gyro/y", rr.Scalars(last_gyro[1]))
+        rr.log("world/imu/gyro/z", rr.Scalars(last_gyro[2]))
 
     if gravity is not None:
         rr.log('car/gravity',

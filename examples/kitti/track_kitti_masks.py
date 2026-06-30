@@ -181,7 +181,7 @@ for frame in range(len(timestamps)):
     trajectory.append(odom_pose.translation)
 
     # Send results to rerun for visualization (convert to CPU only here)
-    rr.set_time_sequence('frame', frame)
+    rr.set_time('frame', sequence=frame)
     rr.log('trajectory', rr.LineStrips3D(trajectory))
     rr.log('final_landmarks', rr.Points3D(list(final_landmarks.values()), radii=0.1))
     rr.log('car', rr.Transform3D(

@@ -29,6 +29,14 @@ sequence_path = os.path.join(
 def color_from_id(identifier):
     return [(identifier * 17) % 256, (identifier * 31) % 256, (identifier * 47) % 256]
 
+KITTI_3D_VIEW_EYE = rrb.EyeControls3D(
+    kind=rrb.Eye3DKind.Orbital,
+    position=(12.0, -9.0, -30.0),
+    look_target=(0.0, 0.0, 8.0),
+    eye_up=(0.0, -1.0, 0.0),
+    speed=25.0,
+)
+
 # Setup rerun visualizer
 rr.init('kitti', strict=True, spawn=True)  # launch re-run instance
 
@@ -37,7 +45,15 @@ rr.send_blueprint(rrb.Blueprint(
     rrb.TimePanel(state="collapsed"),
     rrb.Vertical(
         row_shares=[0.6, 0.4],
-        contents=[rrb.Spatial3DView(), rrb.Spatial2DView(origin='car/cam0')]
+        contents=[
+            rrb.Spatial3DView(
+                origin='view_anchor',
+                name='3D',
+                contents=['+ /**'],
+                eye_controls=KITTI_3D_VIEW_EYE
+            ),
+            rrb.Spatial2DView(origin='car/cam0')
+        ]
     )
 ))
 
@@ -112,7 +128,8 @@ for frame in range(len(timestamps)):
     trajectory.append(odom_pose.translation)
 
     # Send results to rerun for visualization
-    rr.set_time_sequence('frame', frame)
+    rr.set_time('frame', sequence=frame)
+    rr.log('view_anchor', rr.Transform3D(translation=odom_pose.translation))
     rr.log('trajectory', rr.LineStrips3D(trajectory))
     rr.log('final_landmarks', rr.Points3D(list(final_landmarks.values()), radii=0.1))
     rr.log('car', rr.Transform3D(
