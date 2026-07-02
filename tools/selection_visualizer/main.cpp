@@ -54,8 +54,7 @@ static cv::Mat CreateImage(const ImageSource& image, const ImageShape& shape) {
   return cvmat;
 }
 
-static void DoMonoTrack(const std::string& edexFile, std::string outputFolder, std::string seqPath,
-                        sof::Settings& sof_settings) {
+static void DoMonoTrack(const std::string& edexFile, std::string outputFolder, sof::Settings& sof_settings) {
   outputFolder += "mono/";
 
   std::error_code ec;
@@ -64,7 +63,7 @@ static void DoMonoTrack(const std::string& edexFile, std::string outputFolder, s
     return;
   }
 
-  camera_rig_edex::CameraRigEdex rig(edexFile, seqPath);
+  camera_rig_edex::CameraRigEdex rig(edexFile);
 
   ErrorCode err;
   if (!(err = rig.start())) {
@@ -269,7 +268,7 @@ int main(int argC, char** ppArgV) {
     std::cout << "Output folder - " + resultFolder << std::endl;
 
     const std::string fileListFullName = sequenceFolder + seqSubPath + edexFile;
-    DoMonoTrack(fileListFullName, resultFolder, sequenceFolder + seqSubPath, sof_settings);
+    DoMonoTrack(fileListFullName, resultFolder, sof_settings);
 
     std::cout << "Tracking done." << std::endl;
 

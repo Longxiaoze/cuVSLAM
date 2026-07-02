@@ -26,13 +26,12 @@ using namespace cuvslam;
 
 TEST(CameraRigEdex, DISABLED_ReadSequence) {
   const std::string sequenceFolder = cuvslam::Environment::GetVar(cuvslam::Environment::CUVSLAM_DATASETS);
-  const std::string sequencePath = sequenceFolder + "/kitti/04/";
   const std::string absEdexFileName = sequenceFolder + "kitti/04/stereo.edex";
 
   edex::EdexFile f;
   ASSERT_TRUE(f.read(absEdexFileName));
 
-  camera_rig_edex::CameraRigEdex rig(absEdexFileName, sequencePath);
+  camera_rig_edex::CameraRigEdex rig(absEdexFileName);
   {
     ASSERT_TRUE(rig.start());
     Sources curr_sources;

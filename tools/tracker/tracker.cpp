@@ -141,12 +141,12 @@ int main(int argC, char** ppArgV) {
   std::unique_ptr<ICameraRig> rig;
   if (FLAGS_repeat_type == "Shuttle") {
     rig = std::make_unique<camera_rig_edex::ShuttleCameraRigEdex>(
-        std::make_unique<camera_rig_edex::CameraRigEdex>(full_filename, edex_dir), FLAGS_sequence_num_repeats);
+        std::make_unique<camera_rig_edex::CameraRigEdex>(full_filename), FLAGS_sequence_num_repeats);
   } else if (FLAGS_repeat_type == "Repeat") {
     rig = std::make_unique<camera_rig_edex::RepeatedCameraRigEdex>(
-        std::make_unique<camera_rig_edex::CameraRigEdex>(full_filename, edex_dir), FLAGS_sequence_num_repeats);
+        std::make_unique<camera_rig_edex::CameraRigEdex>(full_filename), FLAGS_sequence_num_repeats);
   } else {
-    rig = std::make_unique<camera_rig_edex::CameraRigEdex>(full_filename, edex_dir);
+    rig = std::make_unique<camera_rig_edex::CameraRigEdex>(full_filename);
   }
 
   // black oscillator

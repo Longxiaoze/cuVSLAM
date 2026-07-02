@@ -6,14 +6,14 @@
 
 To track and save odometry poses:
 ```bash
-./bin/cuvslam_api_launcher -dataset=<edex dir> -print_odom_poses=<path>
+./bin/cuvslam_api_launcher -edex=<edex file> -print_odom_poses=<path>
 ```
 
 ### Odometry + SLAM
 
 To enable SLAM and save both odometry and SLAM poses:
 ```bash
-./bin/cuvslam_api_launcher -dataset=<edex dir> -print_odom_poses=<path> -print_slam_poses=<path> --cfg_enable_slam --cfg_enable_export
+./bin/cuvslam_api_launcher -edex=<edex file> -print_odom_poses=<path> -print_slam_poses=<path> --cfg_enable_slam --cfg_enable_export
 ```
 
 **Note:** SLAM requires both flags:
@@ -24,12 +24,12 @@ To enable SLAM and save both odometry and SLAM poses:
 
 To save a SLAM map:
 ```bash
-./bin/cuvslam_api_launcher -dataset=<edex dir> -output_map=<map dir> --cfg_enable_slam --cfg_enable_export
+./bin/cuvslam_api_launcher -edex=<edex file> -output_map=<map dir> --cfg_enable_slam --cfg_enable_export
 ```
 
 To localize in map:
 ```bash
-./bin/cuvslam_api_launcher -dataset=<edex dir> -loc_input_map=<map dir> -loc_input_hints=<hint file> -print_loc_poses=<path>
+./bin/cuvslam_api_launcher -edex=<edex file> -loc_input_map=<map dir> -loc_input_hints=<hint file> -print_loc_poses=<path>
 ```
 
 Additional flags with default values:
@@ -44,7 +44,7 @@ To localize, the util will use the latest hint not later than current frame.
 You can specify optional per-frame `track_options` using a YAML config file with the `--config` flag:
 
 ```bash
-./bin/cuvslam_api_launcher --config=api_config.yaml --dataset=<edex dir>
+./bin/cuvslam_api_launcher --config=api_config.yaml --edex=<edex file>
 ```
 
 Command-line flags will override values from the config file. See `api_config.yaml` for an example configuration with all supported options.
@@ -76,6 +76,6 @@ python3 extract_bag.py
 
 # Run tracker
 source cuvslam_vars.sh
-./bin/cuvslam_api_launcher -dataset=$CUVSLAM_DATASETS/euroc/MH_01_easy
+./bin/cuvslam_api_launcher -edex=$CUVSLAM_DATASETS/euroc/MH_01_easy/stereo.edex
 
 ```

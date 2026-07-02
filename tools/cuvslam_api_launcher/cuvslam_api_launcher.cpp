@@ -16,11 +16,13 @@
  */
 
 #include <algorithm>
+#include <chrono>
 #include <experimental/iterator>
-#include <filesystem>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
+#include <limits>
+#include <optional>
 #include <random>
 #include <string>
 #include <thread>
@@ -56,7 +58,7 @@ const Slam::Config kDefaultSlamCfg = Slam::GetDefaultConfig();
 DEFINE_int32(verbosity, 2, "Verbosity level");
 DEFINE_string(config, "", "Path to YAML config file (command-line flags override config file values)");
 // replay settings
-DEFINE_string(dataset, ".", "Path to edex dataset to run on");
+DEFINE_string(edex, "", "Path to the .edex file to run on (required)");
 DEFINE_string(cameras, "", "Comma-separated list of cameras");
 DEFINE_int32(start_frame, 0, "Frame to start with");
 DEFINE_int32(repeat, 1, "Number of repetitions of the dataset");
@@ -72,6 +74,7 @@ DEFINE_bool(print_nan_on_failure, false, "Print a NaN pose when the localization
 DEFINE_bool(ros_frame_conversion, false, "Convert input/output poses from/to ROS frame");
 DEFINE_string(output_map, "", "Path to output map (cuVSLAM will try to save it at the end)");
 DEFINE_string(print_map_keyframes, "", "Path to save map keyframes");
+DEFINE_bool(print_stats, true, "Print an end-of-run performance and observation summary to stdout");
 // hinted localization settings
 DEFINE_string(loc_input_map, "", "Path to input map (cuVSLAM will try to localize in it)");
 DEFINE_string(loc_input_hints, "", "Path to hint data for localization (format: `timestamp x y z`)");
@@ -158,6 +161,61 @@ void setStreamFormat(std::ofstream& out_poses) {
   out_poses << std::fixed << std::setprecision(9)
             << PoseIOManip(FLAGS_print_format == "tum" ? PoseFormat::TUM : PoseFormat::MATRIX,
                            FLAGS_ros_frame_conversion);
+}
+
+// Accumulates per-frame timing and visible-observation counts over a tracking run and prints an
+// end-of-run summary. Only receives numbers from the tracking loop; no cuVSLAM state of its own.
+struct RunStats {
+  size_t num_frames = 0;
+  double total_track_seconds = 0.0;
+  double max_track_seconds = 0.0;
+  FrameId max_track_frame = 0;
+  bool has_observations = false;
+  size_t total_observations = 0;
+  size_t min_observations = std::numeric_limits<size_t>::max();
+  FrameId min_observations_frame = 0;
+
+  // One successfully tracked frame. num_observations is empty when observation export is disabled.
+  void AddFrame(double track_seconds, std::optional<size_t> num_observations, FrameId frame) {
+    ++num_frames;
+    total_track_seconds += track_seconds;
+    if (track_seconds > max_track_seconds) {
+      max_track_seconds = track_seconds;
+      max_track_frame = frame;
+    }
+    if (num_observations.has_value()) {
+      has_observations = true;
+      total_observations += num_observations.value();
+      if (num_observations.value() < min_observations) {
+        min_observations = num_observations.value();
+        min_observations_frame = frame;
+      }
+    }
+  }
+};
+
+// total_wall_seconds is measured by the caller around the tracking loop (fps basis).
+void printRunStats(std::ostream& stream, const RunStats& stats, double total_wall_seconds) {
+  if (stats.num_frames == 0) {
+    stream << "No frames tracked." << std::endl;
+    return;
+  }
+  const double fps = total_wall_seconds > 0 ? static_cast<double>(stats.num_frames) / total_wall_seconds : 0.0;
+  const double avg_track_seconds = stats.total_track_seconds / static_cast<double>(stats.num_frames);
+  stream << "frames = " << stats.num_frames << ", duration = " << total_wall_seconds << " s, fps = " << fps << "\n";
+  stream << "average track() duration = " << avg_track_seconds
+         << " s, max track() duration = " << stats.max_track_seconds << " s (in frame #" << stats.max_track_frame
+         << ")\n";
+  if (stats.has_observations) {
+    const double avg_observations =
+        static_cast<double>(stats.total_observations) / static_cast<double>(stats.num_frames);
+    stream << "average visible observations = " << avg_observations
+           << ", min visible observations = " << stats.min_observations << " (in frame #"
+           << stats.min_observations_frame << ")\n";
+  } else {
+    stream << "observation stats unavailable: rerun with --cfg_enable_export\n";
+  }
+  stream << std::flush;
 }
 
 template <typename T>
@@ -383,19 +441,18 @@ bool RunSlamLoadAndLocalizeOnMatchingFrame(Slam& slam, const Slam::ImageSet& ima
   return true;
 }
 
-bool trackEdexDataSet(const std::string& data_folder, const Odometry::Config& odom_cfg, const Slam::Config& slam_cfg,
+bool trackEdexDataSet(const std::string& edex_name, const Odometry::Config& odom_cfg, const Slam::Config& slam_cfg,
                       const cuvslam::internal::Internals& internals,
                       const std::map<std::string, std::string>& expert_params, const std::string& input_map_name,
                       const std::string& output_map_name) {
   std::vector<CameraId> camera_ids{StringToIntVector<CameraId>(FLAGS_cameras, ',')};
-  std::string edex_name{std::filesystem::path{data_folder} / "stereo.edex"};
   std::unique_ptr<camera_rig_edex::ICameraRigReplay> edex_rig;
   if (FLAGS_shuttle) {
     edex_rig = std::make_unique<camera_rig_edex::ShuttleCameraRigEdex>(
-        std::make_unique<camera_rig_edex::CameraRigEdex>(edex_name, data_folder, camera_ids), FLAGS_repeat);
+        std::make_unique<camera_rig_edex::CameraRigEdex>(edex_name, camera_ids), FLAGS_repeat);
   } else {
     edex_rig = std::make_unique<camera_rig_edex::RepeatedCameraRigEdex>(
-        std::make_unique<camera_rig_edex::CameraRigEdex>(edex_name, data_folder, camera_ids), FLAGS_repeat);
+        std::make_unique<camera_rig_edex::CameraRigEdex>(edex_name, camera_ids), FLAGS_repeat);
   }
 
   edex::EdexFile edex_file;
@@ -460,6 +517,9 @@ bool trackEdexDataSet(const std::string& data_folder, const Odometry::Config& od
   FrameId frame = static_cast<FrameId>(FLAGS_start_frame);
   edex_rig->setCurrentFrame(frame);
   FrameId next_loc_frame = FLAGS_loc_start_frame;
+  RunStats run_stats;
+  const auto run_start = std::chrono::steady_clock::now();
+  bool success = true;
   while (true) {
     ScopedThrottler throttle(FLAGS_max_fps);
     Sources cur_sources;
@@ -517,13 +577,16 @@ bool trackEdexDataSet(const std::string& data_folder, const Odometry::Config& od
       }
     }
 
+    const auto track_start = std::chrono::steady_clock::now();
     PoseEstimate pose_estimate = odom->Track(images, masks, depths, &internals);
+    const double track_seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - track_start).count();
     if (!pose_estimate.world_from_rig.has_value()) {
       TraceWarning("Track(): Tracking lost at frame %zu.", frame);
       if (FLAGS_ignore_tracking_errors) {
         continue;
       } else {
-        return false;
+        success = false;
+        break;
       }
     }
     auto odom_pose = pose_estimate.world_from_rig.value().pose;
@@ -544,17 +607,20 @@ bool trackEdexDataSet(const std::string& data_folder, const Odometry::Config& od
         const auto& frame_meta = cur_meta[frame_source_index];
         if (frame_meta.frame_number == FLAGS_slam_load_and_localize_on_frame) {
           if (!RunSlamLoadAndLocalizeOnMatchingFrame(*slam, images)) {
-            return false;
+            success = false;
+            break;
           }
         }
       }
     }
 
+    std::optional<size_t> num_observations;
     if (odom_cfg.enable_observations_export) {
-      // Export observations for camera 0
-      std::vector<Observation> observations = odom->GetLastObservations(0);
-      TraceDebug("Exported %zu observations at frame %zu", observations.size(), frame);
+      // Observations for the reference camera (camera 0).
+      num_observations = odom->GetLastObservations(0).size();
+      TraceDebug("Exported %zu observations at frame %zu", num_observations.value(), frame);
     }
+    run_stats.AddFrame(track_seconds, num_observations, frame);
 
     if (odom_cfg.enable_landmarks_export) {
       std::vector<Landmark> landmarks = odom->GetLastLandmarks();
@@ -607,6 +673,17 @@ bool trackEdexDataSet(const std::string& data_folder, const Odometry::Config& od
 
     frame++;
   }
+
+  if (FLAGS_print_stats) {
+    const double total_wall_seconds =
+        std::chrono::duration<double>(std::chrono::steady_clock::now() - run_start).count();
+    printRunStats(std::cout, run_stats, total_wall_seconds);
+  }
+
+  if (!success) {
+    return false;
+  }
+
   while (loc_context.status == LocalizeInMapStatus::IN_PROGRESS) {
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
@@ -639,6 +716,11 @@ int main(int arg_c, char** arg_v) {
   if (arg_c != 1) {
     std::cout << "This tools doesn't expect command line arguments, only flags listed with --help" << std::endl
               << "If you see this message, please check your command line." << std::endl;
+    return EXIT_FAILURE;
+  }
+
+  if (FLAGS_edex.empty()) {
+    std::cout << "Error: -edex is required (path to the .edex file to run on)." << std::endl;
     return EXIT_FAILURE;
   }
 
@@ -755,7 +837,7 @@ int main(int arg_c, char** arg_v) {
   if (flag_is_set("expert_sba_use_winsorizer"))
     expert_params["sba.use_sba_winsorizer"] = FLAGS_expert_sba_use_winsorizer ? "true" : "false";
 
-  return trackEdexDataSet(FLAGS_dataset, odom_cfg, slam_cfg, internals, expert_params, FLAGS_loc_input_map,
+  return trackEdexDataSet(FLAGS_edex, odom_cfg, slam_cfg, internals, expert_params, FLAGS_loc_input_map,
                           FLAGS_output_map)
              ? 0
              : 1;

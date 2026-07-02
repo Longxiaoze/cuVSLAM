@@ -80,8 +80,9 @@ protected:
   int64_t get_event_timestamp(const Event& event);
 
 public:
-  CameraRigEdex(const std::string& edexFileName, const std::string& seqPath,
-                const std::vector<CameraId>& useCameras = {});
+  // Paths stored inside the edex (image sequences, IMU log, frame-metadata) are resolved relative
+  // to the edex file's directory.
+  explicit CameraRigEdex(const std::string& edexFileName, const std::vector<CameraId>& useCameras = {});
   int64_t getFirstTimestamp() const;
   int64_t getLastTimestamp() const;
   bool isFinished() const { return eventIndex_ >= events_.size(); };

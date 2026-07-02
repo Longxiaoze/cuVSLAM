@@ -229,7 +229,7 @@ TEST_P(FIDTest2, DISABLED_SimulatorEdex) {
   const std::string testDataFolder = CUVSLAM_TEST_ASSETS;
   const std::string edex_path = testDataFolder + "fig.edex";
 
-  camera_rig_edex::CameraRigEdex camera_rig(edex_path, testDataFolder);
+  camera_rig_edex::CameraRigEdex camera_rig(edex_path);
   ASSERT_TRUE(camera_rig.start() == ErrorCode::S_True);
 
   camera::Rig rig;

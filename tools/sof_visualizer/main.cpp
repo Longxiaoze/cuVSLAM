@@ -106,8 +106,8 @@ void LineIfExists(cv::InputOutputArray img, TrackId track_id, const Vector2T& or
   }
 }
 
-static void DoStereoTrack(const std::string& edexFile, std::string outputFolder, std::string seqPath,
-                          sof::Settings& sof_settings, odom::KeyFrameSettings& kf_settings) {
+static void DoStereoTrack(const std::string& edexFile, std::string outputFolder, sof::Settings& sof_settings,
+                          odom::KeyFrameSettings& kf_settings) {
   outputFolder += "stereo/";
 
   std::error_code ec;
@@ -116,7 +116,7 @@ static void DoStereoTrack(const std::string& edexFile, std::string outputFolder,
     return;
   }
 
-  camera_rig_edex::CameraRigEdex rig(edexFile, seqPath);
+  camera_rig_edex::CameraRigEdex rig(edexFile);
 
   ErrorCode err;
   if (!(err = rig.start())) {
@@ -405,8 +405,7 @@ int main(int argC, char** ppArgV) {
     std::cout << "Output folder - " + resultFolder << std::endl;
 
     const std::string fileListFullName = sequenceFolder + seqSubPath + edexFile;
-    DoStereoTrack(fileListFullName, resultFolder, sequenceFolder + seqSubPath, svo_settings.sof_settings,
-                  svo_settings.kf_settings);
+    DoStereoTrack(fileListFullName, resultFolder, svo_settings.sof_settings, svo_settings.kf_settings);
 
     std::cout << "Tracking done." << std::endl;
 

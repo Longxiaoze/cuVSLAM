@@ -113,7 +113,7 @@ int main(int argC, char** ppArgV) {
         std::cout << "gt_path = " << gt_path << std::endl;
     }
 
-    camera_rig_edex::CameraRigEdex rig(edex_path, sequence_path);
+    camera_rig_edex::CameraRigEdex rig(edex_path);
     if (rig.start() != ErrorCode::S_True) {
         TraceError("Failed to start");
     }

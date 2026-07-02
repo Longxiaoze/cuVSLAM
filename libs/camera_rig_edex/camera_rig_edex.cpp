@@ -20,8 +20,6 @@
 #include <filesystem>
 #include <numeric>
 
-#include "json/json.h"
-
 #include "common/camera_id.h"
 #include "common/coordinate_system.h"
 #include "common/imu_measurement.h"
@@ -36,10 +34,9 @@ int64_t CameraRigEdex::get_event_timestamp(const Event& event) {
   return event.type == Frame ? event.frame_metadata.camera.at(0).timestamp_ns : event.imu_measurement.time_ns;
 }
 
-CameraRigEdex::CameraRigEdex(const std::string& edexFileName, const std::string& seqPath,
-                             const std::vector<CameraId>& useCameras)
+CameraRigEdex::CameraRigEdex(const std::string& edexFileName, const std::vector<CameraId>& useCameras)
     : edexFileName_(edexFileName),
-      seqPath_(seqPath),
+      seqPath_(std::filesystem::path(edexFileName).parent_path()),
       useCameras_(useCameras),
       eventIndex_(0),
       frameIndex_(0),

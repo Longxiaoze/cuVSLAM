@@ -8,10 +8,10 @@ CUVSLAM_DATASETS=/home/$USER/datasets
 
 source $CUVSLAM_BIN/cuvslam_vars.sh
 CUVSLAM_LAUNCHER=$CUVSLAM_BIN/bin/cuvslam_api_launcher
-KITTI_EDEX=$CUVSLAM_DATASETS/kitti/06
+KITTI_EDEX=$CUVSLAM_DATASETS/kitti/06/stereo.edex
 
 # save map
-$CUVSLAM_LAUNCHER -dataset=$KITTI_EDEX --cfg_enable_slam --cfg_enable_export --cfg_horizontal=true \
+$CUVSLAM_LAUNCHER -edex="$KITTI_EDEX" --cfg_enable_slam --cfg_enable_export --cfg_horizontal=true \
   -output_map=$CUVSLAM_MAP
 
 for i in $(seq 1 100); do
@@ -23,7 +23,7 @@ for i in $(seq 1 100); do
   $CUVSLAM_LAUNCHER \
     -max_fps=100 \
     --cfg_enable_slam --cfg_enable_export --cfg_horizontal=true \
-    -dataset=$KITTI_EDEX \
+    -edex="$KITTI_EDEX" \
     -slam_reproduce_mode=false \
     -slam_input_database=$CUVSLAM_MAP \
     -slam_localize_image=$CUVSLAM_DATASETS/kitti/06/image_0/000270.png \

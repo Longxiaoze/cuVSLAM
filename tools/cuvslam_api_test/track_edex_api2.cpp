@@ -156,8 +156,7 @@ bool TrackEdexApi2(const TestingSettings& settings, const cuvslam::Odometry::Con
     WarmUpGPU();
 
     const std::string edex_name{GetEdexPath(settings.data_folder)};
-    auto edex_rig =
-        std::make_unique<camera_rig_edex::CameraRigEdex>(edex_name, settings.data_folder, settings.camera_ids);
+    auto edex_rig = std::make_unique<camera_rig_edex::CameraRigEdex>(edex_name, settings.camera_ids);
 
     edex::EdexFile edex_file;
     VERIFY_TRACE(edex_file.read(edex_name), "Failed to read %s\n", edex_name.c_str());
