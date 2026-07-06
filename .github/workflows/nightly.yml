@@ -64,8 +64,8 @@ jobs:
 
           # Jetson configs (CUDA version must match host JetPack driver)
           # Orin uses base_image override; cuda value is not used for the Docker base but kept for artifact naming
-          - { name: "aarch64 / Orin (JP 6.1)",  runner: '["jetson-orin"]', cuda: "12.6.3", ubuntu: "22.04", archs: "87",  platform: "orin",  wheel: false, base_image: "nvcr.io/nvidia/12.6.11-devel:12.6.11-devel-aarch64-ubuntu22.04" }
-          - { name: "aarch64 / Thor (JP 7.1)",  runner: '["jetson-thor"]', cuda: "13.0.1", ubuntu: "24.04", archs: "110", platform: "thor",  wheel: false, retries: 3, build_timeout: 60, job_timeout: 180 }
+          - { name: "aarch64 / Orin (JP 6.1)",  runner: '["jetson-orin"]', cuda: "12.6.3", ubuntu: "22.04", archs: "87",  platform: "orin",  wheel: true, base_image: "nvcr.io/nvidia/12.6.11-devel:12.6.11-devel-aarch64-ubuntu22.04" }
+          - { name: "aarch64 / Thor (JP 7.1)",  runner: '["jetson-thor"]', cuda: "13.0.1", ubuntu: "24.04", archs: "110", platform: "thor",  wheel: true, retries: 3, build_timeout: 60, job_timeout: 180 }
     steps:
       - name: Verify GPU
         run: nvidia-smi
@@ -155,6 +155,10 @@ jobs:
           CUDA_VERSION=${{ matrix.cuda }} \
           UBUNTU_VERSION=${{ matrix.ubuntu }} \
           ./scripts/build_pycuvslam_in_docker.sh ./output
+
+      - name: Verify Python wheel installs
+        if: matrix.wheel
+        run: ./scripts/verify_pycuvslam_wheel_in_docker.sh ./output
 
       - name: Run Python tests
         uses: nick-fields/retry@v3
