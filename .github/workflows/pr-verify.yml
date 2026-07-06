@@ -143,18 +143,7 @@ jobs:
           ./scripts/eval_cuvslam_in_docker.sh ./output
 
       - name: Build documentation
-        run: |
-          docker run --rm \
-            -v "$(pwd):/cuvslam:ro" \
-            -v "$(realpath ./output):/output" \
-            -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
-            cuvslam:local bash -c '
-              set -euo pipefail
-              trap "chown -R $HOST_UID:$HOST_GID /output" EXIT
-              CUVSLAM_BUILD_DIR=/output/build SKBUILD_BUILD_DIR=/tmp/skbuild \
-                pip install /cuvslam/python/
-              sphinx-build -W -b html /cuvslam/python/docs /output/docs
-            '
+        run: ./scripts/build_docs_in_docker.sh ./output
 
       - name: Upload documentation
         if: always()

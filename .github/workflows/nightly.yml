@@ -57,7 +57,7 @@ jobs:
       matrix:
         include:
           # x86_64 configs (CUDA/Ubuntu controlled by Docker build args)
-          - { name: "x86_64 / cuda-12.6 / ubuntu-22.04", runner: '["gpu"]', cuda: "12.6.3", ubuntu: "22.04", archs: "75;80;86;89;90", platform: "x86_64", wheel: true, eval: true }
+          - { name: "x86_64 / cuda-12.6 / ubuntu-22.04", runner: '["gpu"]', cuda: "12.6.3", ubuntu: "22.04", archs: "75;80;86;89;90", platform: "x86_64", wheel: true, eval: true, docs: true }
           - { name: "x86_64 / cuda-12.6 / ubuntu-24.04", runner: '["gpu"]', cuda: "12.6.3", ubuntu: "24.04", archs: "75;80;86;89;90", platform: "x86_64", wheel: true, eval: true }
           - { name: "x86_64 / cuda-13.2 / ubuntu-22.04", runner: '["gpu"]', cuda: "13.2.0", ubuntu: "22.04", archs: "75;80;86;89;100;120;121", platform: "x86_64", wheel: true, eval: true }
           - { name: "x86_64 / cuda-13.2 / ubuntu-24.04", runner: '["gpu"]', cuda: "13.2.0", ubuntu: "24.04", archs: "75;80;86;89;100;120;121", platform: "x86_64", wheel: true, eval: true }
@@ -167,6 +167,19 @@ jobs:
           timeout_minutes: 30
           retry_wait_seconds: 30
           command: ./scripts/test_pycuvslam_in_docker.sh ./output
+
+      - name: Build documentation
+        if: matrix.docs
+        run: ./scripts/build_docs_in_docker.sh ./output
+
+      - name: Upload documentation
+        if: always() && matrix.docs
+        uses: actions/upload-artifact@v7
+        with:
+          name: docs-html
+          path: output/docs/
+          retention-days: 30
+          if-no-files-found: warn
 
       - name: Run cuVSLAM evaluation
         if: matrix.eval
@@ -358,6 +371,20 @@ jobs:
               cp "$whl" "release-assets/$(basename "$whl")"
             done
           done
+
+          # Documentation (Doxygen C++ API + Sphinx Python API) is built once per
+          # nightly; ship it as a tarball asset with a download link.
+          docs_dir="artifacts/docs-html"
+          if [ -d "$docs_dir" ] && find "$docs_dir" -type f | grep -q .; then
+            tar czf "release-assets/docs-html.tar.gz" -C "$docs_dir" .
+            {
+              echo ""
+              echo "## Documentation"
+              echo ""
+              echo "[Download the API documentation (Doxygen C++ + Sphinx Python HTML)](https://github.com/${{ github.repository }}/releases/download/nightly-${DATE}/docs-html.tar.gz)"
+              echo ""
+            } >> release-notes.md
+          fi
 
           echo "=== Release Notes ==="
           cat release-notes.md
