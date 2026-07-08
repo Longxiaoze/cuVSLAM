@@ -22,7 +22,6 @@
 #include <fstream>
 #include <iomanip>
 #include <iostream>
-#include <memory>
 #include <set>
 #include <sstream>
 #include <stdexcept>
@@ -641,6 +640,7 @@ int main(int argc, char **argv) {
                                                     .with_colors({rerun::Color(0, 64, 255)}));
 
         // Log SLAM trajectory
+        const auto slam_pose = slam.GetPose();
         const auto &st = slam_pose.translation;
         trajectory_slam.push_back({st[0], st[1], st[2]});
         rec.log_static("world/trajectory_slam", rerun::LineStrips3D(rerun::components::LineStrip3D(trajectory_slam))

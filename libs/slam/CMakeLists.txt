@@ -99,7 +99,8 @@ endif (USE_LMDB)
 if (USE_RERUN)
   set(HEADERS ${HEADERS} map/spatial_index/visualizer.h)
   set(SOURCES ${SOURCES} map/spatial_index/visualizer.cpp)
-  set(LIBS ${LIBS} visualizer)
+  # async_slam.cpp calls pipelines::logTrajectory() in its USE_RERUN path, so slam must link pipelines.
+  set(LIBS ${LIBS} visualizer pipelines)
 endif (USE_RERUN)
 
 setup_staticlib_project(
