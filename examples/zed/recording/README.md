@@ -6,6 +6,10 @@ See also [StereoLabs: Video Recording](https://www.stereolabs.com/docs/video/rec
 Refer to the [Installation ZED SDK](../README.md#zed-sdk-installation) for instructions on installing and configuring
 all required dependencies.
 
+For Python replay with the shared example dependencies, use ZED SDK `5.4.0` as recommended in the parent ZED README.
+Some older `pyzed` wheels, such as the one shipped with ZED SDK `4.1`, require `numpy<2.0` and are not compatible with
+the current `examples/requirements.txt` NumPy pin.
+
 - **record_from_zed** - CLI tool for capturing VGA 100fps stereo images from a ZED 1 camera using GPU-accelerated H.265
   lossy compression. It produces approximately 1GB files every 15 minutes and is suitable for long recordings (>1 hour)
   on a regular laptop. The SVO2 file stores raw RGB-synchronised images and preserves camera calibration. During
@@ -43,6 +47,9 @@ all required dependencies.
   * `max_map_size` -  from `cuvslam.Tracker.SlamConfig`. Maximum number of poses in SLAM pose graph (0 for unlimited).
 
 ## Tested environment
+
+The performance figures in the recorder description above were measured with this environment. For current Python replay
+setup, prefer the ZED SDK version recommended in [ZED SDK Installation](../README.md#zed-sdk-installation).
 
 ```
 Ubuntu 22.04.5 LTS (python3.10)

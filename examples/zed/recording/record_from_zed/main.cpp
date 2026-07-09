@@ -57,6 +57,13 @@ bool SetupBreakOnCtrlC() {
   return true;
 }
 
+void ConfigureZedTimestampClock() {
+#if defined(ZED_SDK_MAJOR_VERSION) && defined(ZED_SDK_MINOR_VERSION) && \
+    ((ZED_SDK_MAJOR_VERSION > 5) || (ZED_SDK_MAJOR_VERSION == 5 && ZED_SDK_MINOR_VERSION >= 3))
+  sl::Camera::setTimestampClock(sl::TIMESTAMP_CLOCK::MONOTONIC_CLOCK);
+#endif
+}
+
 int main() {
   if (!SetupBreakOnCtrlC()) {
     std::cerr << "Can't setup Ctrl+C signal handler." << std::endl;
@@ -65,6 +72,7 @@ int main() {
   std::cout << "Press Ctrl+C to stop recording." << std::endl;
 
   std::cout << "ZED SDK version: " << sl::Camera::getSDKVersion() << std::endl;
+  ConfigureZedTimestampClock();
   sl::Camera zed;
   sl::InitParameters init_params;
   constexpr int kFPS = 100;

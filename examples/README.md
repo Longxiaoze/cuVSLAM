@@ -30,6 +30,10 @@ See the [Docker README](../docker/README.md) for building and running PyCuVSLAM 
 pip install -r requirements.txt
 ```
 
+The shared example requirements pin `numpy==2.2.4`. If you install an additional camera SDK Python wrapper, make sure it
+is compatible with NumPy 2.x and does not downgrade NumPy. For ZED examples, see
+[ZED SDK Installation](zed/README.md#zed-sdk-installation).
+
 ## Examples and Guides
 
 Explore various examples to quickly get started with cuVSLAM using [Python API (PyCuVSLAM)](#visual-tracking-mode-examples) or [C++ API](#c-api-examples).

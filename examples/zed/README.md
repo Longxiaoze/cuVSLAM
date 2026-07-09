@@ -16,6 +16,11 @@ Refer to the [Installation Guide](../README.md#prerequisites) for detailed envir
 
 ## ZED SDK Installation
 
+ZED SDK `5.4.0` is recommended for the Python examples in this repository. The shared
+[`examples/requirements.txt`](../requirements.txt) pins `numpy==2.2.4`; the `pyzed` wheel shipped with ZED SDK `5.4`
+supports NumPy 2.x. Some older `pyzed` wheels, such as the one shipped with ZED SDK `4.1`, require `numpy<2.0`, which
+conflicts with the shared example requirements and can break SciPy/Rerun imports.
+
 ### ZED C++ SDK and tools
 
 Follow the official installation documentation for
@@ -47,4 +52,9 @@ install it with `pip` for your active environment only.
 ```
 pip install requests==2.32.5
 python3 /usr/local/zed/get_python_api.py
+pip install -r ../requirements.txt
+pip check
 ```
+
+Reinstalling `../requirements.txt` after `pyzed` keeps the shared example versions pinned, and `pip check` verifies that
+the installed ZED Python API is compatible with those versions.

@@ -26,6 +26,26 @@ DEFAULT_FPS = 30
 DEFAULT_IMU_FREQUENCY = 200
 
 
+def _zed_sdk_version_at_least(major: int, minor: int) -> bool:
+    try:
+        version = sl.Camera.get_sdk_version()
+        version_parts = version.split(".")
+        sdk_version = int(version_parts[0]), int(version_parts[1])
+    except (AttributeError, IndexError, ValueError):
+        return False
+
+    return sdk_version >= (major, minor)
+
+
+def configure_zed_timestamp_clock() -> None:
+    if (
+        _zed_sdk_version_at_least(5, 3)
+        and hasattr(sl.Camera, "set_timestamp_clock")
+        and hasattr(sl, "TIMESTAMP_CLOCK")
+    ):
+        sl.Camera.set_timestamp_clock(sl.TIMESTAMP_CLOCK.MONOTONIC_CLOCK)
+
+
 def transform_to_pose(transform_matrix=None) -> vslam.Pose:
     """Convert a transformation matrix to a vslam.Pose object.
 
@@ -193,6 +213,8 @@ def setup_zed_camera(
     Returns:
         Tuple of (camera, camera_info)
     """
+    configure_zed_timestamp_clock()
+
     # Create a Camera object
     zed = sl.Camera()
 

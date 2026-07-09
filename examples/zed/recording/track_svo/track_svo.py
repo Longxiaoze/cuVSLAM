@@ -23,7 +23,29 @@ throttle_vis = True  # Do not visualize all frames, just one frame per second. M
 enable_slam = True
 
 
+def _zed_sdk_version_at_least(major: int, minor: int) -> bool:
+    try:
+        version = sl.Camera.get_sdk_version()
+        version_parts = version.split(".")
+        sdk_version = int(version_parts[0]), int(version_parts[1])
+    except (AttributeError, IndexError, ValueError):
+        return False
+
+    return sdk_version >= (major, minor)
+
+
+def configure_zed_timestamp_clock() -> None:
+    if (
+        _zed_sdk_version_at_least(5, 3)
+        and hasattr(sl.Camera, "set_timestamp_clock")
+        and hasattr(sl, "TIMESTAMP_CLOCK")
+    ):
+        sl.Camera.set_timestamp_clock(sl.TIMESTAMP_CLOCK.MONOTONIC_CLOCK)
+
+
 def init_zed():
+    configure_zed_timestamp_clock()
+
     zed = sl.Camera()
 
     # disable depth to speedup processing to 1.5x
