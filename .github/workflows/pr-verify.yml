@@ -304,6 +304,29 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
+  # Build-only smoke check for a non-default CMake configuration. Catches build/link
+  # breakages the default (USE_RERUN=OFF) build never exercises. Build only: no tests,
+  # wheels, docs, or evaluation (nightly runs the full USE_RERUN build+test).
+  build-rerun-x86:
+    name: "Build (USE_RERUN, x86_64)"
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: [gpu]
+    timeout-minutes: 120
+    steps:
+      - name: Verify GPU
+        run: nvidia-smi
+
+      - uses: actions/checkout@v5
+        with:
+          lfs: false
+
+      - name: Build with USE_RERUN
+        env:
+          # Pin one CUDA arch for speed: build-only, so the generated code need not
+          # match the runner GPU.
+          EXTRA_CMAKE_ARGS: "-DUSE_RERUN=ON -DCMAKE_CUDA_ARCHITECTURES=80"
+        run: ./scripts/build_cuvslam_in_docker.sh Release ./output-rerun
+
   test-report:
     name: "Post Test Report"
     if: always() && github.event.pull_request.head.repo.full_name == github.repository
@@ -429,7 +452,7 @@ jobs:
     name: "PR status"
     runs-on: ubuntu-latest
     if: always()
-    needs: [lint, build-test-x86, build-test-orin, build-test-thor]
+    needs: [lint, build-test-x86, build-test-orin, build-test-thor, build-rerun-x86]
     steps:
       - name: Check results
         env:
@@ -437,10 +460,11 @@ jobs:
           X86_RESULT: ${{ needs.build-test-x86.result }}
           ORIN_RESULT: ${{ needs.build-test-orin.result }}
           THOR_RESULT: ${{ needs.build-test-thor.result }}
+          RERUN_RESULT: ${{ needs.build-rerun-x86.result }}
           IS_SAME_REPO: ${{ github.event.pull_request.head.repo.full_name == github.repository }}
         run: |
           set -euo pipefail
-          echo "lint=$LINT_RESULT x86=$X86_RESULT orin=$ORIN_RESULT thor=$THOR_RESULT same_repo=$IS_SAME_REPO"
+          echo "lint=$LINT_RESULT x86=$X86_RESULT orin=$ORIN_RESULT thor=$THOR_RESULT rerun=$RERUN_RESULT same_repo=$IS_SAME_REPO"
 
           if [ "$LINT_RESULT" != "success" ]; then
             echo "::error::Lint did not succeed (result: $LINT_RESULT)"
@@ -448,7 +472,7 @@ jobs:
           fi
 
           if [ "$IS_SAME_REPO" = "true" ]; then
-            for pair in "x86_64:$X86_RESULT" "Orin:$ORIN_RESULT" "Thor:$THOR_RESULT"; do
+            for pair in "x86_64:$X86_RESULT" "Orin:$ORIN_RESULT" "Thor:$THOR_RESULT" "Rerun:$RERUN_RESULT"; do
               name="${pair%%:*}"
               result="${pair##*:}"
               if [ "$result" != "success" ]; then
