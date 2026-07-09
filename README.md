@@ -161,6 +161,11 @@ In the repository root build C++ code using one of two ways:
 cmake -S . -B build
 cmake --build build --parallel $(nproc)
 ```
+With CMake 4.x, add `-DCMAKE_POLICY_VERSION_MINIMUM=3.5` during configure if an external dependency reports that
+compatibility with CMake < 3.5 has been removed:
+```
+cmake -S . -B build -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+```
 2. Set source & build paths for `build_release.sh` and run it.
 
    **Important**: Before running `build_release.sh` set paths using one of the options:
@@ -231,7 +236,7 @@ nvidia-smi --query-gpu=compute_cap --format=csv,noheader   # e.g. 8.7 -> use 87
    ```bash
    python3 -m venv .venv
    source .venv/bin/activate
-   pip install rerun-sdk==0.22.1
+   pip install rerun-sdk==0.33.1
    ```
 2. Specify virtual env with `CUVSLAM_TOOLS_PYENV` environment variable
    (defaults to `.venv` in repository root).

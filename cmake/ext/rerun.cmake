@@ -14,7 +14,7 @@
 
 include(FetchContent)
 
-set(RERUN_VERSION "0.22.1")
+set(RERUN_VERSION "0.33.1")
 
 # Configure Rerun options before fetching
 set(RERUN_DOWNLOAD_AND_BUILD_ARROW ON)
@@ -23,7 +23,7 @@ set(RERUN_ARROW_LINK_SHARED OFF)
 FetchContent_Declare(
     rerun_sdk
     URL https://github.com/rerun-io/rerun/releases/download/${RERUN_VERSION}/rerun_cpp_sdk.zip
-    URL_HASH SHA256=6b3da79204b7c791262ab0ecc6deadb4fdeee4695259304e2472523c211da3e6
+    URL_HASH SHA256=f7caf9ac607ca75e9e2e543e30b4752480efc1933b05972026acc0e7032a1071
 )
 
 # Rerun automatically downloads and builds Arrow via download_and_build_arrow.cmake

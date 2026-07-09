@@ -412,7 +412,7 @@ void logPlanes(const std::vector<map::Plane>& planes, const std::string& viewpor
     // Centroid point
     {
       rerun::Position3D pt{plane.centroid.x(), plane.centroid.y(), plane.centroid.z()};
-      recording.log(base + "/centroid", rerun::Points3D({pt}).with_colors(opaque(color)).with_radii(0.02f));
+      recording.log(base + "/centroid", rerun::Points3D(pt).with_colors(opaque(color)).with_radii(0.02f));
     }
   }
 }

@@ -43,7 +43,7 @@
 #include "rerun/archetypes/image.hpp"
 #include "rerun/archetypes/line_strips3d.hpp"
 #include "rerun/archetypes/points2d.hpp"
-#include "rerun/archetypes/scalar.hpp"
+#include "rerun/archetypes/scalars.hpp"
 #include "rerun/archetypes/transform3d.hpp"
 
 // Generate pseudo-random color from integer identifier for visualization
@@ -717,11 +717,11 @@ int main(int argc, char **argv) {
 
         // Log camera image
         rec.log("world/camera_0/image",
-                rerun::Image::from_greyscale8(
+                rerun::Image::from_grayscale8(
                     img_left.data, {static_cast<uint32_t>(img_left.width), static_cast<uint32_t>(img_left.height)}));
 
         rec.log("world/camera_1/image",
-                rerun::Image::from_greyscale8(
+                rerun::Image::from_grayscale8(
                     img_right.data, {static_cast<uint32_t>(img_right.width), static_cast<uint32_t>(img_right.height)}));
 
         // Log gravity vector
@@ -735,12 +735,12 @@ int main(int argc, char **argv) {
         // Log IMU data (last measurement)
         if (imu_index > 0) {
           const auto &imu_last = imu_data[imu_index - 1];
-          rec.log("world/imu/accel/x", rerun::Scalar(imu_last.linear_accelerations[0]));
-          rec.log("world/imu/accel/y", rerun::Scalar(imu_last.linear_accelerations[1]));
-          rec.log("world/imu/accel/z", rerun::Scalar(imu_last.linear_accelerations[2]));
-          rec.log("world/imu/gyro/x", rerun::Scalar(imu_last.angular_velocities[0]));
-          rec.log("world/imu/gyro/y", rerun::Scalar(imu_last.angular_velocities[1]));
-          rec.log("world/imu/gyro/z", rerun::Scalar(imu_last.angular_velocities[2]));
+          rec.log("world/imu/accel/x", rerun::Scalars(imu_last.linear_accelerations[0]));
+          rec.log("world/imu/accel/y", rerun::Scalars(imu_last.linear_accelerations[1]));
+          rec.log("world/imu/accel/z", rerun::Scalars(imu_last.linear_accelerations[2]));
+          rec.log("world/imu/gyro/x", rerun::Scalars(imu_last.angular_velocities[0]));
+          rec.log("world/imu/gyro/y", rerun::Scalars(imu_last.angular_velocities[1]));
+          rec.log("world/imu/gyro/z", rerun::Scalars(imu_last.angular_velocities[2]));
         }
 #endif
       } else {

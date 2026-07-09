@@ -17,6 +17,8 @@
 
 #include "visualizer.hpp"
 
+#include <utility>
+
 #include <rerun/archetypes/view_coordinates.hpp>
 
 #include "common/log.h"
@@ -43,7 +45,7 @@ RerunVisualizer::~RerunVisualizer() {
 
 void RerunVisualizer::setupTimeline(size_t frame_id, int64_t timestamp) {
   recording_.set_time_sequence("frame_id", frame_id);
-  recording_.set_time_nanos("timestamp", timestamp);
+  recording_.set_time_duration_nanos("timestamp", timestamp);
 }
 
 void RerunVisualizer::clearViewport(const std::string& viewport_name) { recording_.log(viewport_name, rerun::Clear()); }
@@ -54,7 +56,7 @@ void RerunVisualizer::shutdown() {
   already_shutdown = true;
 
   try {
-    recording_.flush_blocking();
+    std::ignore = recording_.flush_blocking();
   } catch (...) {
     // Ignore any exceptions during shutdown
   }
