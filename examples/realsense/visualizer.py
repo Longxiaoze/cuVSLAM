@@ -12,7 +12,7 @@
 # By using, reproducing, modifying, distributing, performing, or displaying any portion or element
 # of the software or derivative works thereof, you agree to be bound by this License.
 
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import numpy as np
 import rerun as rr
@@ -24,19 +24,29 @@ import cuvslam as vslam
 DEFAULT_NUM_VIZ_CAMERAS = 1
 POINT_RADIUS = 5.0
 ARROW_SCALE = 0.1
-GRAVITY_ARROW_SCALE = 0.02
+GRAVITY_ARROW_SCALE = 0.2
+GRAVITY_ARROW_RADIUS = 0.005
 
 
 class RerunVisualizer:
     """Rerun-based visualizer for cuVSLAM tracking results."""
 
-    def __init__(self, num_viz_cameras: int = DEFAULT_NUM_VIZ_CAMERAS) -> None:
+    def __init__(
+        self,
+        num_viz_cameras: int = DEFAULT_NUM_VIZ_CAMERAS,
+        image_size: Optional[Tuple[int, int]] = None,
+        show_gravity: bool = False
+    ) -> None:
         """Initialize rerun visualizer.
 
         Args:
             num_viz_cameras: Number of cameras to visualize
+            image_size: Optional image size as (width, height) for fixed 2D view bounds
+            show_gravity: Whether to show the estimated gravity direction
         """
         self.num_viz_cameras = num_viz_cameras
+        self.image_size = image_size
+        self.show_gravity = show_gravity
         rr.init("cuVSLAM Visualizer", spawn=True)
         rr.log("world", rr.ViewCoordinates.RIGHT_HAND_Y_DOWN, static=True)
 
@@ -53,7 +63,13 @@ class RerunVisualizer:
                     column_shares=[0.5, 0.5],
                     contents=[
                         rrb.Vertical(contents=[
-                            rrb.Spatial2DView(origin=f'world/camera_{i}')
+                            rrb.Spatial2DView(
+                                origin=f'world/camera_{i}',
+                                visual_bounds=rrb.VisualBounds2D(
+                                    x_range=[0, self.image_size[0]],
+                                    y_range=[0, self.image_size[1]]
+                                ) if self.image_size is not None else None
+                            )
                             for i in range(self.num_viz_cameras)
                         ]),
                         rrb.Spatial3DView(origin='world')
@@ -73,7 +89,7 @@ class RerunVisualizer:
             translation: Translation vector
         """
         rr.log(
-            "world/camera_0",
+            "world/rig",
             rr.Transform3D(translation=translation, quaternion=rotation_quat),
             rr.Arrows3D(
                 vectors=np.eye(3) * ARROW_SCALE,
@@ -94,7 +110,16 @@ class RerunVisualizer:
             image: Camera image
             camera_name: Name of the camera for logging
         """
+        # Handle different image datatypes for compression
+        if image.dtype == np.uint8:
+            image_log = rr.Image(image).compress()
+        else:
+            # For other datatypes, don't compress to avoid issues
+            image_log = rr.Image(image)
+
+        image_path = f"world/{camera_name}/image"
         if not observations_main_cam:
+            rr.log(image_path, image_log)
             return
 
         # Assign random color to new tracks
@@ -107,31 +132,27 @@ class RerunVisualizer:
             self.track_colors[obs.id] for obs in observations_main_cam
         ])
 
-        # Handle different image datatypes for compression
-        if image.dtype == np.uint8:
-            image_log = rr.Image(image).compress()
-        else:
-            # For other datatypes, don't compress to avoid issues
-            image_log = rr.Image(image)
-
+        rr.log(
+            image_path,
+            image_log
+        )
         rr.log(
             f"world/{camera_name}/observations",
-            rr.Points2D(positions=points, colors=colors, radii=POINT_RADIUS),
-            image_log
+            rr.Points2D(positions=points, colors=colors, radii=POINT_RADIUS)
         )
 
     def _log_gravity(self, gravity: np.ndarray) -> None:
-        """Log gravity vector to Rerun.
+        """Log gravity direction to Rerun."""
+        gravity_norm = np.linalg.norm(gravity)
+        if gravity_norm == 0:
+            return
 
-        Args:
-            gravity: Gravity vector
-        """
         rr.log(
-            "world/camera_0/gravity",
+            "world/rig/gravity",
             rr.Arrows3D(
-                vectors=gravity,
+                vectors=gravity / gravity_norm * GRAVITY_ARROW_SCALE,
                 colors=[[255, 0, 0]],
-                radii=GRAVITY_ARROW_SCALE
+                radii=GRAVITY_ARROW_RADIUS
             )
         )
 
@@ -166,7 +187,7 @@ class RerunVisualizer:
                 observations_main_cam[i], images[i], f"camera_{i}"
             )
 
-        if gravity is not None:
+        if self.show_gravity and gravity is not None:
             self._log_gravity(gravity)
 
         rr.log("world/timestamp", rr.TextLog(str(timestamp)))

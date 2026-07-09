@@ -695,7 +695,10 @@ NB_MODULE(pycuvslam, m) {
           "If visual odometry loses camera position, it briefly continues execution using user-provided\n"
           "IMU measurements while trying to recover the position.\n"
           "IMU sensors and cameras clocks must be synchronized, :meth:`track` and "
-          ":meth:`register_imu_measurement` must be called in strict ascending order of timestamps.")
+          ":meth:`register_imu_measurement` must be called in non-decreasing timestamp order and externally "
+          "serialized on the same tracker. Do not call them concurrently from different threads. If IMU samples "
+          "are captured on a separate thread, buffer them and submit them in timestamp order from the same "
+          "sequence that calls :meth:`track`, or protect all calls with caller-owned synchronization.")
       .def(
           "get_last_observations",
           [](const Odometry& self, uint32_t camera_index) -> std::vector<Observation> {

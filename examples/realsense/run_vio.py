@@ -14,7 +14,9 @@
 
 import queue
 import threading
-from typing import List, Optional
+from collections import deque
+from dataclasses import dataclass
+from typing import Deque, List, Optional
 
 import numpy as np
 import pyrealsense2 as rs
@@ -30,6 +32,17 @@ IMU_FREQUENCY_ACCEL = 200
 IMU_FREQUENCY_GYRO = 200
 IMAGE_JITTER_THRESHOLD_NS = 35 * 1e6  # 35ms in nanoseconds
 IMU_JITTER_THRESHOLD_NS = 6 * 1e6  # 6ms in nanoseconds
+IMU_QUEUE_MAX_SIZE = IMU_FREQUENCY_ACCEL * 5
+SHOW_GRAVITY = False
+
+
+@dataclass
+class ImuSample:
+    """Raw IMU sample buffered before registration with cuVSLAM."""
+
+    timestamp_ns: int
+    linear_accelerations: tuple[float, float, float]
+    angular_velocities: tuple[float, float, float]
 
 
 class ThreadWithTimestamp:
@@ -54,38 +67,27 @@ class ThreadWithTimestamp:
 
 
 def imu_thread(
-    tracker: vslam.Tracker,
-    q: queue.Queue,
+    imu_queue: queue.Queue,
     thread_with_timestamp: ThreadWithTimestamp,
     motion_pipe: rs.pipeline
 ) -> None:
-    """IMU processing thread - optimized for 200Hz on aarch64.
+    """IMU capture thread - optimized for 200Hz on aarch64.
 
     Args:
-        tracker: cuVSLAM tracker instance
-        q: Queue for communication with main thread
+        imu_queue: Queue for buffered IMU samples
         thread_with_timestamp: Timestamp management object
         motion_pipe: RealSense motion pipeline
     """
-    # Pre-allocate buffers outside the loop for performance
-    imu_measurement = vslam.ImuMeasurement()
-    accel_buf = np.zeros(3, dtype=np.float32)
-    gyro_buf = np.zeros(3, dtype=np.float32)
-
     # Cache threshold for fast access
     high_rate_threshold = thread_with_timestamp.high_rate_threshold_ns
     prev_timestamp = None
     drop_count = 0
+    queue_drop_count = 0
 
     try:
         while True:
             imu_frames = motion_pipe.wait_for_frames()
             current_timestamp = int(imu_frames[0].timestamp * 1e6)
-
-            # Quick timestamp validation
-            last_cam_ts = thread_with_timestamp.last_low_rate_timestamp
-            if last_cam_ts is not None and current_timestamp < last_cam_ts:
-                continue
 
             # Calculate timestamp diff
             if prev_timestamp is not None:
@@ -107,38 +109,79 @@ def imu_thread(
             accel_data = imu_frames[0].as_motion_frame().get_motion_data()
             gyro_data = imu_frames[1].as_motion_frame().get_motion_data()
 
-            # Reuse pre-allocated buffers
-            accel_buf[0] = accel_data.x
-            accel_buf[1] = accel_data.y
-            accel_buf[2] = accel_data.z
-            gyro_buf[0] = gyro_data.x
-            gyro_buf[1] = gyro_data.y
-            gyro_buf[2] = gyro_data.z
-
-            # Update measurement in-place
-            imu_measurement.timestamp_ns = current_timestamp
-            imu_measurement.linear_accelerations = accel_buf
-            imu_measurement.angular_velocities = gyro_buf
-
-            tracker.register_imu_measurement(0, imu_measurement)
+            sample = ImuSample(
+                timestamp_ns=current_timestamp,
+                linear_accelerations=(accel_data.x, accel_data.y, accel_data.z),
+                angular_velocities=(gyro_data.x, gyro_data.y, gyro_data.z)
+            )
+            try:
+                imu_queue.put_nowait(sample)
+            except queue.Full:
+                queue_drop_count += 1
+                # Drop the oldest sample to keep the capture thread non-blocking.
+                try:
+                    imu_queue.get_nowait()
+                except queue.Empty:
+                    pass
+                imu_queue.put_nowait(sample)
+                if queue_drop_count % 100 == 1:
+                    print(f"Warning: IMU queue overflow ({queue_drop_count} dropped samples)")
     except Exception as e:
         print(f"IMU thread error: {e}")
 
 
+def register_imu_until(
+    tracker: vslam.Tracker,
+    imu_queue: queue.Queue,
+    pending_imu: Deque[ImuSample],
+    timestamp_ns: int,
+    last_tracker_timestamp_ns: Optional[int]
+) -> Optional[int]:
+    """Register buffered IMU samples up to the image timestamp.
+
+    cuVSLAM requires Track and RegisterImuMeasurement calls to be sequenced by
+    timestamp. IMU capture can run independently, but all tracker calls happen
+    from the camera thread through this drain point.
+    """
+    while True:
+        try:
+            pending_imu.append(imu_queue.get_nowait())
+        except queue.Empty:
+            break
+
+    while pending_imu and pending_imu[0].timestamp_ns <= timestamp_ns:
+        sample = pending_imu.popleft()
+        if last_tracker_timestamp_ns is not None and sample.timestamp_ns < last_tracker_timestamp_ns:
+            continue
+        imu_measurement = vslam.ImuMeasurement()
+        imu_measurement.timestamp_ns = sample.timestamp_ns
+        imu_measurement.linear_accelerations = sample.linear_accelerations
+        imu_measurement.angular_velocities = sample.angular_velocities
+        tracker.register_imu_measurement(0, imu_measurement)
+        last_tracker_timestamp_ns = sample.timestamp_ns
+    return last_tracker_timestamp_ns
+
+
 def camera_thread(
     tracker: vslam.Tracker,
-    q: queue.Queue,
+    result_queue: queue.Queue,
+    imu_queue: queue.Queue,
     thread_with_timestamp: ThreadWithTimestamp,
-    ir_pipe: rs.pipeline
+    ir_pipe: rs.pipeline,
+    show_gravity: bool
 ) -> None:
     """Camera processing thread.
 
     Args:
         tracker: cuVSLAM tracker instance
-        q: Queue for communication with main thread
+        result_queue: Queue for communication with main thread
+        imu_queue: Queue for buffered IMU samples
         thread_with_timestamp: Timestamp management object
         ir_pipe: RealSense infrared pipeline
+        show_gravity: Whether to include gravity data in visualization output
     """
+    pending_imu: Deque[ImuSample] = deque()
+    last_tracker_timestamp: Optional[int] = None
     try:
         while True:
             ir_frames = ir_pipe.wait_for_frames()
@@ -165,14 +208,20 @@ def camera_thread(
                 np.asanyarray(ir_right_frame.get_data())
             )
 
+            last_tracker_timestamp = register_imu_until(
+                tracker, imu_queue, pending_imu, current_timestamp, last_tracker_timestamp
+            )
             odom_pose_estimate, _ = tracker.track(current_timestamp, images)
+            last_tracker_timestamp = current_timestamp
             odom_pose_with_cov = odom_pose_estimate.world_from_rig
             if odom_pose_with_cov is None:
                 print(f"Tracking failed at frame {current_timestamp}")
                 continue
 
             # Put result in queue for main thread
-            q.put([current_timestamp, odom_pose_with_cov.pose, images])
+            observations = tracker.get_last_observations(0)
+            gravity = tracker.get_last_gravity() if show_gravity else None
+            result_queue.put([current_timestamp, odom_pose_with_cov.pose, images, observations, gravity])
             thread_with_timestamp.last_low_rate_timestamp = current_timestamp
     except Exception as e:
         print(f"Camera thread error: {e}")
@@ -275,26 +324,27 @@ def main() -> None:
         rs.stream.gyro, rs.format.motion_xyz32f, IMU_FREQUENCY_GYRO
     )
 
-    # Start pipelines
-    motion_pipe.start(motion_config)
-    ir_pipe.start(ir_config)
-
     # Set up threading and visualization
     q = queue.Queue()
-    visualizer = RerunVisualizer()
+    imu_queue = queue.Queue(maxsize=IMU_QUEUE_MAX_SIZE)
+    visualizer = RerunVisualizer(image_size=RESOLUTION, show_gravity=SHOW_GRAVITY)
     thread_with_timestamp = ThreadWithTimestamp(
         IMAGE_JITTER_THRESHOLD_NS, IMU_JITTER_THRESHOLD_NS
     )
 
+    # Start pipelines after spawning Rerun, otherwise the viewer can inherit camera file descriptors.
+    motion_pipe.start(motion_config)
+    ir_pipe.start(ir_config)
+
     # Start threads
     imu_thread_obj = threading.Thread(
         target=imu_thread,
-        args=(tracker, q, thread_with_timestamp, motion_pipe),
+        args=(imu_queue, thread_with_timestamp, motion_pipe),
         daemon=True
     )
     camera_thread_obj = threading.Thread(
         target=camera_thread,
-        args=(tracker, q, thread_with_timestamp, ir_pipe),
+        args=(tracker, q, imu_queue, thread_with_timestamp, ir_pipe, SHOW_GRAVITY),
         daemon=True
     )
 
@@ -308,7 +358,7 @@ def main() -> None:
         while True:
             # Get the output from the queue with timeout
             try:
-                timestamp, odom_pose, images = q.get(timeout=1.0)
+                timestamp, odom_pose, images, observations, gravity = q.get(timeout=1.0)
             except queue.Empty:
                 continue
 
@@ -318,17 +368,12 @@ def main() -> None:
             frame_id += 1
             trajectory.append(odom_pose.translation)
 
-            gravity = None
-            if cfg.odometry_mode == vslam.Tracker.OdometryMode.Inertial:
-                # Gravity estimation requires sufficient keyframes with motion
-                gravity = tracker.get_last_gravity()
-
             # Visualize results for left camera
             visualizer.visualize_frame(
                 frame_id=frame_id,
                 images=[images[0]],
                 pose=odom_pose,
-                observations_main_cam=[tracker.get_last_observations(0)],
+                observations_main_cam=[observations],
                 trajectory=trajectory,
                 timestamp=timestamp,
                 gravity=gravity

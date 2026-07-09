@@ -594,7 +594,7 @@ public:
    *
    * If visual odometry loses camera position, it briefly continues execution
    * using user-provided IMU measurements while trying to recover the position.
-   * You should call these functions in the order of ascending timestamps however many IMU measurements you have
+   * You should call these functions in monotonic timestamp order however many IMU measurements you have
    * between image acquisitions:
    *
    * - tracker.Track
@@ -603,9 +603,11 @@ public:
    * - tracker.RegisterImuMeasurement
    * - tracker.Track
    *
-   * IMU measurement and frame image both have timestamps, so it is important to call these functions in
-   * strict ascending order of timestamps. RegisterImuMeasurement is thread-safe so it's allowed to call
-   * RegisterImuMeasurement and Track in parallel.
+   * IMU measurements and frame images both have timestamps, so calls to Track() and RegisterImuMeasurement()
+   * on the same Odometry instance must be made in non-decreasing timestamp order and externally serialized.
+   * Do not call them concurrently from different threads.
+   * If IMU samples are captured on a separate thread, buffer them and submit them in timestamp order from
+   * the same sequence that calls Track(), or protect all calls with caller-owned synchronization.
    *
    * @param[in] sensor_index Sensor index; must be 0, as only one sensor is supported now
    * @param[in] imu IMU measurements
