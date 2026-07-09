@@ -331,7 +331,7 @@ for frame in range(IDX, len(timestamps)):
     rr.log('trajectory_slam', rr.LineStrips3D(trajectory_slam))
     rr.log('final_landmarks', rr.Points3D(final_landmarks, radii=0.1))
     rr.log('loop_closure_poses', rr.Points3D(
-        loop_closure_poses, radii=1.2, colors=[[255, 0, 0]]
+        loop_closure_poses, radii=0.6, colors=[[255, 0, 0]]
     ))
     rr.log('car', rr.Transform3D(
         translation=current_pose.translation,
