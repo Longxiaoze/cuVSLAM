@@ -22,6 +22,10 @@
 #include "common/include_gtest.h"
 #include "common/log.h"
 
+#ifdef USE_RERUN
+#include "rerun/config.hpp"
+#endif
+
 DEFINE_string(logger_filename, "", "Log filename");
 
 namespace test {
@@ -55,6 +59,11 @@ public:
 using namespace cuvslam;
 
 int main(int argc, char** argv) {
+#ifdef USE_RERUN
+  // Unit tests must not require a viewer. RERUN=1 can override this default for interactive debugging.
+  rerun::set_default_enabled(false);
+#endif
+
   ::testing::InitGoogleTest(&argc, argv);
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);

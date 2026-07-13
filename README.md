@@ -243,6 +243,14 @@ nvidia-smi --query-gpu=compute_cap --format=csv,noheader   # e.g. 8.7 -> use 87
 3. Update `build_release.sh` and set `USE_RERUN` to `ON`
 4. Run any tool from tools folder
 
+C++ unit tests disable Rerun by default, even in builds configured with `USE_RERUN=ON`. To enable the viewer for
+interactive test debugging, ensure `rerun` is on `PATH` and set `RERUN=1`:
+
+```bash
+cd <build-dir>
+RERUN=1 ctest --output-on-failure
+```
+
 # FAQ
 
 **Q**: What Python versions are supported by PyCuVSLAM?
