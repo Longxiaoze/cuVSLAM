@@ -12,7 +12,7 @@ tools/           # C++ analysis and visualization tools (tracker, reporter, visu
 test_data/       # Small reference datasets (edex, sof, navsim)
 cmake/ext/       # FetchContent dependency configs (Eigen, GTest, spdlog, yaml-cpp, …)
 docker/          # Dockerfile for containerized builds
-cuvslam-skills/  # Claude Code skills (cuvslam-onboard, cuvslam-troubleshoot)
+cuvslam-skills/  # Claude Code skills (cuvslam-onboard, cuvslam-troubleshoot, cuvslam-ci)
 ```
 
 Key files:
