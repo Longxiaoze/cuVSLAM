@@ -25,7 +25,7 @@ if(NOT USE_CUDA)
     message(FATAL_ERROR "USE_CUNLS requires USE_CUDA")
 endif()
 
-set(CUNLS_VERSION "d0aa5a21019f6d20b063bb1862aea92cd8eea126")  # release tag nightly-2026-06-24
+set(CUNLS_VERSION "Release_07_13_2026")
 
 # Keep cuNLS's own tests and Python bindings out of this build.
 set(BUILD_TESTING OFF)
@@ -37,10 +37,13 @@ set(BUILD_PYTHON_BINDINGS OFF)
 # carries 3.24 semantics, which degrade harmlessly on 3.22), so we lower its floor to 3.22 at populate
 # time. The sed is idempotent: re-running it on an already-patched tree is a no-op. Revisit this when
 # bumping CUNLS_VERSION in case upstream starts relying on a genuine 3.24 feature.
+# No DOWNLOAD_EXTRACT_TIMESTAMP here: the keyword does not exist on the cmake 3.22 shipped in the
+# Jetson Orin base images (it gets parsed as part of the URL_HASH value and breaks the configure).
+# On cmake >= 3.24 its absence only triggers a harmless one-time CMP0135 dev warning.
 FetchContent_Declare(
     cunls
-    GIT_REPOSITORY https://github.com/nvidia-isaac/cuNLS.git
-    GIT_TAG ${CUNLS_VERSION}
+    URL https://github.com/nvidia-isaac/cuNLS/archive/refs/tags/${CUNLS_VERSION}.tar.gz
+    URL_HASH SHA256=23b2917ae3903e6a688edb1652e40202d314527cd7fa9db68c762f0429375f77
     PATCH_COMMAND sed -i "s/cmake_minimum_required(VERSION 3.24)/cmake_minimum_required(VERSION 3.22)/" CMakeLists.txt
 )
 FetchContent_MakeAvailable(cunls)
