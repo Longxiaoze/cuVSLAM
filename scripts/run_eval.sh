@@ -81,7 +81,8 @@ for record in "${DATASETS[@]}"; do
   python3 cuvslam_app.py \
     $app_flags \
     --test_config="$test_config" \
-    --max_workers="$MAX_WORKERS"
+    --max_workers="$MAX_WORKERS" \
+    --pdf
 done
 
 PREV_KPI=""
