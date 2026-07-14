@@ -304,11 +304,11 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
-  # Build-only smoke check for a non-default CMake configuration. Catches build/link
-  # breakages the default (USE_RERUN=OFF) build never exercises. Build only: no tests,
-  # wheels, docs, or evaluation (nightly runs the full USE_RERUN build+test).
+  # Smoke check for a non-default CMake configuration. Catches build/link and test
+  # breakages the default (USE_RERUN=OFF) build never exercises. Builds and runs the
+  # C++ unit tests; no wheels, docs, or evaluation (nightly runs the full USE_RERUN build).
   build-rerun-x86:
-    name: "Build (USE_RERUN, x86_64)"
+    name: "Build + Test (USE_RERUN, x86_64)"
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [gpu]
     timeout-minutes: 120
@@ -320,12 +320,18 @@ jobs:
         with:
           lfs: false
 
+      - name: Pull LFS test data
+        run: git lfs pull --include="test_data/"
+
       - name: Build with USE_RERUN
         env:
-          # Pin one CUDA arch for speed: build-only, so the generated code need not
-          # match the runner GPU.
-          EXTRA_CMAKE_ARGS: "-DUSE_RERUN=ON -DCMAKE_CUDA_ARCHITECTURES=80"
+          # Build for the default (all) CUDA archs so the generated kernels match the
+          # runner GPU, which the C++ tests below require at runtime.
+          EXTRA_CMAKE_ARGS: "-DUSE_RERUN=ON"
         run: ./scripts/build_cuvslam_in_docker.sh Release ./output-rerun
+
+      - name: Run C++ tests
+        run: ./scripts/test_cuvslam_in_docker.sh ./output-rerun
 
   test-report:
     name: "Post Test Report"
