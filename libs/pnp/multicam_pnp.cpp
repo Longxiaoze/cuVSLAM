@@ -219,7 +219,7 @@ bool PNPSolver::solve(Isometry3T& rig_from_world, Matrix6T& static_info_exp,
 
   // log landmark_for_observation_ with initial guess in rerun visualizer
   [[maybe_unused]] Isometry3T camera_from_world = rig_.camera_from_rig[0] * rig_from_world;
-  RERUN(logLandmarks, landmark_for_observation_, camera_from_world, *rig_.intrinsics[0],
+  RERUN(logLandmarks, landmark_for_observation_, camera_from_world, rig_.intrinsics[0],
         "world/camera_0/images/landmarks_pnp_initial", Color(0, 0, 255));
 
   Matrix6T H;
@@ -230,7 +230,7 @@ bool PNPSolver::solve(Isometry3T& rig_from_world, Matrix6T& static_info_exp,
     // Nothing to minimize. We have a "pendulum" effect on still frames otherwise.
     static_info_exp.setIdentity();
     // log landmark_for_observation_ with final result in rerun visualizer
-    RERUN(logLandmarks, landmark_for_observation_, camera_from_world, *rig_.intrinsics[0],
+    RERUN(logLandmarks, landmark_for_observation_, camera_from_world, rig_.intrinsics[0],
           "world/camera_0/images/landmarks_pnp_final", Color(0, 255, 0));
 
     return true;
@@ -297,7 +297,7 @@ bool PNPSolver::solve(Isometry3T& rig_from_world, Matrix6T& static_info_exp,
     build_camera_from_world(rig_from_world);
 
     // log landmark_for_observation_ with final result in rerun visualizer
-    RERUN(logLandmarks, landmark_for_observation_, cam_from_w_[0], *rig_.intrinsics[0],
+    RERUN(logLandmarks, landmark_for_observation_, cam_from_w_[0], rig_.intrinsics[0],
           "world/camera_0/images/landmarks_pnp_final", Color(0, 255, 0));
 
     Vector3T point_cam;

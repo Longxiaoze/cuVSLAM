@@ -39,9 +39,13 @@ void clearViewport(const std::string& viewport_name) {
 }
 
 void logLandmarks(const std::vector<std::reference_wrapper<const Vector3T>>& landmarks,
-                  const Isometry3T& camera_from_world, const camera::ICameraModel& camera_model,
+                  const Isometry3T& camera_from_world, const camera::ICameraModel* camera_model,
                   const std::string& viewport_name, const Color& color) {
   if (landmarks.empty()) {
+    return;
+  }
+  if (camera_model == nullptr) {
+    TraceWarning("RerunVisualizer: Camera intrinsics unavailable for viewport %s", viewport_name.c_str());
     return;
   }
 
@@ -65,7 +69,7 @@ void logLandmarks(const std::vector<std::reference_wrapper<const Vector3T>>& lan
 
     // Convert normalized coordinates to pixel UV coordinates using camera intrinsics
     Vector2T uv_coords;
-    if (camera_model.denormalizePoint(normalized_coords, uv_coords)) {
+    if (camera_model->denormalizePoint(normalized_coords, uv_coords)) {
       // Add the 2D UV position
       points.emplace_back(uv_coords.x(), uv_coords.y());
     } else {

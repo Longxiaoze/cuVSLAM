@@ -36,7 +36,7 @@ namespace cuvslam::pnp {
 void clearViewport(const std::string& viewport_name);
 
 void logLandmarks(const std::vector<std::reference_wrapper<const Vector3T>>& landmarks,
-                  const Isometry3T& camera_from_world, const camera::ICameraModel& camera_model,
+                  const Isometry3T& camera_from_world, const camera::ICameraModel* camera_model,
                   const std::string& viewport_name, const Color& color);
 
 void logObservations(const std::vector<std::reference_wrapper<const camera::Observation>>& observations,
