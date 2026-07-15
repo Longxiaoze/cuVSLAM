@@ -1,4 +1,5 @@
 name: Nightly Build & Test
+run-name: "${{ github.event_name == 'schedule' && 'Nightly' || startsWith(github.ref, 'refs/heads/release/') && 'Release candidate' || 'Manual build' }} · ${{ github.ref_name }}"
 
 on:
   schedule:
@@ -16,8 +17,8 @@ concurrency:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-  EVAL_KPIS_ARTIFACT: eval-kpis
-  EVAL_REPORT_ARTIFACT: eval-html-report
+  EVAL_KPIS_ARTIFACT: eval-kpis-staging
+  EVAL_REPORT_ARTIFACT: eval-reports-staging
   AWS_DEFAULT_REGION: ${{ vars.AWS_DEFAULT_REGION }}
   S3_DATASETS_BUCKET: ${{ vars.S3_DATASETS_BUCKET }}
 
@@ -27,6 +28,8 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       should_build: ${{ steps.decide.outputs.should_build }}
+      is_release: ${{ steps.decide.outputs.is_release }}
+      release_tag: ${{ steps.decide.outputs.release_tag }}
     steps:
       - uses: actions/checkout@v5
         with:
@@ -35,15 +38,35 @@ jobs:
 
       - name: Detect commits in the last 24 hours
         id: decide
+        shell: bash
+        env:
+          FORCE_BUILD: ${{ github.event.inputs.force_build }}
         run: |
+          set -euo pipefail
           COMMIT_COUNT=$(git log --since="24 hours ago" --oneline | wc -l)
-          FORCE="${{ github.event.inputs.force_build }}"
-          if [ "${COMMIT_COUNT}" -gt 0 ] || [ "${FORCE}" = "true" ]; then
+          FORCE="${FORCE_BUILD:-false}"
+          IS_RELEASE=false
+          RELEASE_TAG=""
+
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] && [[ "$GITHUB_REF_NAME" == release/* ]]; then
+            RELEASE_TAG="$GITHUB_REF_NAME"
+            RELEASE_TAG="${RELEASE_TAG#release/}"
+            if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+(\.[0-9]+){1,2}([.-][0-9A-Za-z]+)*$ ]]; then
+              echo "::error::Release branch must be named release/vMAJOR.MINOR[.PATCH][-SUFFIX] (got '$GITHUB_REF_NAME')."
+              exit 1
+            fi
+            IS_RELEASE=true
+          fi
+
+          echo "is_release=$IS_RELEASE" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+          if [ "${COMMIT_COUNT}" -gt 0 ] || [ "${FORCE}" = "true" ] || [ "$IS_RELEASE" = "true" ]; then
             echo "should_build=true" >> "$GITHUB_OUTPUT"
-            echo "Building: ${COMMIT_COUNT} commit(s) in last 24h, force=${FORCE}"
+            echo "Building: ${COMMIT_COUNT} commit(s) in last 24h, force=${FORCE}, release=${IS_RELEASE}"
           else
             echo "should_build=false" >> "$GITHUB_OUTPUT"
-            echo "Skipping: no commits in last 24h and force=${FORCE}"
+            echo "Skipping: no commits in last 24h, force=${FORCE}, release=${IS_RELEASE}"
           fi
 
   build-and-test:
@@ -78,6 +101,34 @@ jobs:
       - uses: actions/checkout@v5
         with:
           lfs: false
+
+      - name: Configure Ubuntu Ports mirror
+        if: matrix.platform == 'orin' || matrix.platform == 'thor'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          dockerfile = Path("scripts/Dockerfile")
+          marker = "ARG DEBIAN_FRONTEND=noninteractive\n"
+          mirror_setup = r"""ARG DEBIAN_FRONTEND=noninteractive
+
+          # NVIDIA ARM runner networks cannot reliably reach ports.ubuntu.com.
+          RUN set -eux; \
+              find /etc/apt -type f \( -name '*.list' -o -name '*.sources' \) \
+                  -exec sed -Ei 's#https?://ports\.ubuntu\.com/ubuntu-ports#http://mirrors.ocf.berkeley.edu/ubuntu-ports#g' {} +; \
+              printf '%s\n' \
+                  'Acquire::IndexTargets::deb::DEP-11::DefaultEnabled "false";' \
+                  'Acquire::IndexTargets::deb::DEP-11-icons-small::DefaultEnabled "false";' \
+                  'Acquire::IndexTargets::deb::DEP-11-icons::DefaultEnabled "false";' \
+                  'Acquire::IndexTargets::deb::DEP-11-icons-hidpi::DefaultEnabled "false";' \
+                  > /etc/apt/apt.conf.d/99-nvidia-ubuntu-ports-mirror
+          """
+
+          content = dockerfile.read_text()
+          if marker not in content:
+              raise SystemExit(f"{marker.strip()} not found in {dockerfile}")
+          dockerfile.write_text(content.replace(marker, mirror_setup, 1))
+          PY
 
       - name: Pull LFS test data
         run: git lfs pull --include="test_data/"
@@ -173,6 +224,13 @@ jobs:
           retry_wait_seconds: 30
           command: ./scripts/test_pycuvslam_in_docker.sh ./output
 
+      - name: Generate test summary
+        if: always() && !matrix.skip_artifacts
+        run: |
+          CONFIG="${{ matrix.platform }}-cuda${{ matrix.cuda }}-ubuntu${{ matrix.ubuntu }}"
+          python3 scripts/junit-to-markdown.py "$CONFIG" C++ output/cpp-test-results.xml > output/test-summary.txt
+          python3 scripts/junit-to-markdown.py "$CONFIG" Python output/python-test-output.txt >> output/test-summary.txt
+
       - name: Build documentation
         if: matrix.docs
         run: ./scripts/build_docs_in_docker.sh ./output
@@ -208,21 +266,24 @@ jobs:
           retention-days: 1
           if-no-files-found: warn
 
-      - name: Upload eval HTML report
+      - name: Upload eval PDF reports for aggregation
         if: always() && matrix.eval
         uses: actions/upload-artifact@v7
         with:
           name: ${{ env.EVAL_REPORT_ARTIFACT }}-${{ matrix.platform }}-cuda${{ matrix.cuda }}-ubuntu${{ matrix.ubuntu }}
-          path: output/eval/stats/
+          path: output/eval/stats/**/report_*.pdf
           retention-days: 1
           if-no-files-found: warn
 
-      - name: Upload C++ test results
+      - name: Upload test results
         if: always() && !matrix.skip_artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: test-results-cpp-${{ matrix.platform }}-cuda${{ matrix.cuda }}-ubuntu${{ matrix.ubuntu }}
-          path: output/cpp-test-results.xml
+          name: test-results-${{ matrix.platform }}-cuda${{ matrix.cuda }}-ubuntu${{ matrix.ubuntu }}
+          path: |
+            output/cpp-test-results.xml
+            output/python-test-output.txt
+            output/test-summary.txt
           retention-days: 30
           if-no-files-found: warn
 
@@ -244,168 +305,366 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
-  nightly-status:
-    name: Nightly status & release
+  nightly-summary:
+    name: Build status & summary
     runs-on: ubuntu-latest
     if: always()
     needs: [check-changes, build-and-test]
-    # contents: write required by gh release create (tags + assets)
     permissions:
-      contents: write
+      actions: write  # Required by github.rest.actions.deleteArtifact below.
+      contents: read
     steps:
-      - name: Check result
-        id: check
-        run: |
-          if [ "${{ needs.check-changes.outputs.should_build }}" = "false" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Nightly skipped: no changes in last 24 hours."
-          elif [ "${{ needs.build-and-test.result }}" != "success" ]; then
-            echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "One or more nightly builds failed: ${{ needs.build-and-test.result }}"
-            exit 1
-          else
-            echo "skip=false" >> "$GITHUB_OUTPUT"
-            echo "All nightly builds passed — creating release."
-          fi
-
-      - uses: actions/checkout@v5
-        if: steps.check.outputs.skip == 'false'
-        with:
-          persist-credentials: false
-
-      - name: Download all artifacts
-        if: steps.check.outputs.skip == 'false'
+      - name: Download test result artifacts
+        if: needs.check-changes.outputs.should_build == 'true'
+        continue-on-error: true
         uses: actions/download-artifact@v8
         with:
-          path: artifacts
+          pattern: test-results-*
+          path: artifacts/test-results
 
-      - name: Generate release notes and package assets
-        if: steps.check.outputs.skip == 'false'
-        id: release-notes
+      - name: Download KPI staging artifacts
+        if: needs.check-changes.outputs.should_build == 'true'
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: ${{ env.EVAL_KPIS_ARTIFACT }}-*
+          path: artifacts/kpis
+
+      - name: Download evaluation report staging artifacts
+        if: needs.check-changes.outputs.should_build == 'true'
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          pattern: ${{ env.EVAL_REPORT_ARTIFACT }}-*
+          path: artifacts/eval-reports
+
+      - name: Build combined summary
+        id: aggregate
+        shell: bash
         run: |
-          DATE=$(date -u +%Y-%m-%d)
-          echo "date=${DATE}" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          mkdir -p consolidated/kpis consolidated/eval-reports
+          REPORT=consolidated/summary.md
 
-          mkdir -p release-assets
+          {
+            echo "# cuVSLAM CI Summary"
+            echo ""
+            echo "- Trigger: \`$GITHUB_EVENT_NAME\`"
+            echo "- Ref: \`$GITHUB_REF_NAME\`"
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Matrix result: \`${{ needs.build-and-test.result }}\`"
+            echo "- [Workflow run](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+            echo ""
+          } > "$REPORT"
+
+          if [ "${{ needs.check-changes.result }}" != "success" ]; then
+            {
+              echo "The preflight job failed before the build decision could be made."
+              echo ""
+            } >> "$REPORT"
+            echo "has_reports=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "${{ needs.check-changes.outputs.should_build }}" != "true" ]; then
+            {
+              echo "Nightly skipped because there were no commits in the last 24 hours and the build was not forced."
+              echo ""
+            } >> "$REPORT"
+            echo "has_reports=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
 
           {
             echo "## Test Results"
             echo ""
-            echo "| Configuration | Tests | Passed | Failed | Time |"
-            echo "|---|---|---|---|---|"
-          } > release-notes.md
+            echo "| Status | Configuration | Language | Total | Passed | Failed | Errors | Skipped |"
+            echo "|:------:|---------------|----------|------:|-------:|-------:|-------:|--------:|"
+          } >> "$REPORT"
 
-          for dir in artifacts/test-results-cpp-*; do
-            [ -d "$dir" ] || continue
-            CONFIG=$(basename "$dir" | sed 's/test-results-cpp-//' | sed 's/-/ \/ /g' | sed 's/cuda/cuda-/' | sed 's/ubuntu/ubuntu-/')
-              XML=$(find "$dir" -name "*.xml" | head -1 || true)
-            if [ -f "$XML" ]; then
-              TESTS=$(grep -oP 'tests="\K[0-9]+' "$XML" | head -1)
-              FAILURES=$(grep -oP 'failures="\K[0-9]+' "$XML" | head -1)
-              TIME=$(grep -oP 'time="\K[0-9.]+' "$XML" | head -1)
-              TESTS=${TESTS:-"?"}
-              FAILURES=${FAILURES:-"?"}
-              TIME=${TIME:-"?"}
-              if [ "$TESTS" != "?" ] && [ "$FAILURES" != "?" ]; then
-                PASSED=$((TESTS - FAILURES))
-              else
-                PASSED="?"
-              fi
-              echo "| ${CONFIG} | ${TESTS} | ${PASSED} | ${FAILURES} | ${TIME}s |" >> release-notes.md
-              cp "$XML" "release-assets/$(basename "$dir").xml"
-            fi
+          for summary in artifacts/test-results/*/test-summary.txt; do
+            [ -f "$summary" ] || continue
+            while IFS='|' read -r status config language total passed failed errors skipped _details; do
+              case "$status" in
+                pass) icon="PASS" ;;
+                fail) icon="FAIL" ;;
+                *) icon="NO RESULTS" ;;
+              esac
+              echo "| $icon | $config | $language | $total | $passed | $failed | $errors | $skipped |" >> "$REPORT"
+            done < "$summary"
           done
-
-          echo "" >> release-notes.md
-          echo "Commit: ${{ github.sha }}" >> release-notes.md
+          echo "" >> "$REPORT"
 
           # Merge every config's KPI table into one, prefixed with a Config column
           # (platform-cuda-ubuntu slug) so rows stay distinct and reports never overwrite.
           kpi_emit_head=1
-          for kpidir in artifacts/${EVAL_KPIS_ARTIFACT}-*; do
+          kpi_config_count=0
+          for kpidir in artifacts/kpis/${EVAL_KPIS_ARTIFACT}-*; do
             [ -d "$kpidir" ] || continue
-            CONFIG=${kpidir#artifacts/${EVAL_KPIS_ARTIFACT}-}
-            KPI_TABLE=$(find "$kpidir" -name "kpi_*.json.table" 2>/dev/null | head -1 || true)
+            CONFIG=${kpidir#artifacts/kpis/${EVAL_KPIS_ARTIFACT}-}
+            mkdir -p "consolidated/kpis/$CONFIG"
+            cp -a "$kpidir"/. "consolidated/kpis/$CONFIG/"
+            KPI_TABLE=$(find "$kpidir" -name "kpi_*.json.table" -print -quit 2>/dev/null || true)
             [ -f "$KPI_TABLE" ] || continue
             awk -v slug="$CONFIG" -v emit_head="$kpi_emit_head" '
               NR==1 { if (emit_head=="1") print "| Config " $0; next }
               NR==2 { if (emit_head=="1") print "|--------" $0; next }
               { print "| " slug " " $0 }
-            ' "$KPI_TABLE" >> kpi-combined.table
+            ' "$KPI_TABLE" >> consolidated/kpi-combined.table
             kpi_emit_head=""
-            cp "$KPI_TABLE" "release-assets/${CONFIG}-$(basename "$KPI_TABLE")"
-            KPI_JSON=$(find "$kpidir" -name "kpi_*.json" ! -name "*.table" 2>/dev/null | head -1 || true)
-            [ -f "$KPI_JSON" ] && cp "$KPI_JSON" "release-assets/${CONFIG}-$(basename "$KPI_JSON")"
+            kpi_config_count=$((kpi_config_count + 1))
           done
 
-          if [ -f kpi-combined.table ]; then
+          if [ -f consolidated/kpi-combined.table ]; then
             {
-              echo ""
               echo "## cuVSLAM Evaluation KPIs"
               echo ""
-              cat kpi-combined.table
+              cat consolidated/kpi-combined.table
               echo ""
-            } >> release-notes.md
-            cp kpi-combined.table "release-assets/kpi-combined.table"
+            } >> "$REPORT"
           fi
 
-          for repdir in artifacts/${EVAL_REPORT_ARTIFACT}-*; do
+          report_config_count=0
+          for repdir in artifacts/eval-reports/${EVAL_REPORT_ARTIFACT}-*; do
             [ -d "$repdir" ] || continue
-            CONFIG=${repdir#artifacts/${EVAL_REPORT_ARTIFACT}-}
-            find "$repdir" -name "report_*.html" 2>/dev/null | grep -q . || continue
-            tar czf "release-assets/eval-report-${CONFIG}.tar.gz" -C "$repdir" .
-            {
-              echo ""
-              echo "## cuVSLAM Evaluation Report — ${CONFIG}"
-              echo ""
-              echo "[Download the full HTML report (trajectory plots + per-sequence views)](https://github.com/${{ github.repository }}/releases/download/nightly-${DATE}/eval-report-${CONFIG}.tar.gz)"
-              echo ""
-            } >> release-notes.md
+            CONFIG=${repdir#artifacts/eval-reports/${EVAL_REPORT_ARTIFACT}-}
+            PDF=$(find "$repdir" -name "report_*.pdf" -print -quit 2>/dev/null || true)
+            [ -f "$PDF" ] || continue
+            mkdir -p "consolidated/eval-reports/$CONFIG"
+            cp -a "$repdir"/. "consolidated/eval-reports/$CONFIG/"
+            report_config_count=$((report_config_count + 1))
           done
+
+          if [ "$report_config_count" -gt 0 ]; then
+            echo "has_reports=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_reports=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          if [ "${{ needs.build-and-test.result }}" = "success" ]; then
+            if [ "$kpi_config_count" -eq 0 ]; then
+              echo "::error::Successful matrix produced no KPI artifacts."
+              exit 1
+            fi
+            if [ "$report_config_count" -ne "$kpi_config_count" ]; then
+              echo "::error::Expected one PDF report artifact for each KPI configuration; got $report_config_count reports and $kpi_config_count KPI sets."
+              exit 1
+            fi
+          fi
+
+      - name: Upload consolidated evaluation reports
+        id: upload-reports
+        if: steps.aggregate.outputs.has_reports == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: eval-reports
+          path: consolidated/eval-reports/
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Append artifact links
+        if: needs.check-changes.outputs.should_build == 'true'
+        uses: actions/github-script@v7
+        env:
+          SUMMARY_PATH: consolidated/summary.md
+        with:
+          script: |
+            const fs = require('fs');
+            const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+              per_page: 100,
+            });
+            const stagingPrefixes = [
+              `${process.env.EVAL_KPIS_ARTIFACT}-`,
+              `${process.env.EVAL_REPORT_ARTIFACT}-`,
+            ];
+            const retained = artifacts
+              .filter(a => !stagingPrefixes.some(prefix => a.name.startsWith(prefix)))
+              .sort((a, b) => a.name.localeCompare(b.name));
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            let markdown = '\n## Artifacts\n\n';
+            for (const artifact of retained) {
+              markdown += `- [${artifact.name}](${runUrl}/artifacts/${artifact.id})\n`;
+            }
+            fs.appendFileSync(process.env.SUMMARY_PATH, markdown);
+
+      - name: Upload consolidated CI summary
+        id: upload-summary
+        if: needs.check-changes.outputs.should_build == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ci-summary
+          path: |
+            consolidated/summary.md
+            consolidated/kpi-combined.table
+            consolidated/kpis/
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Delete KPI and report staging artifacts
+        if: always() && steps.upload-summary.outcome == 'success'
+        uses: actions/github-script@v7
+        env:
+          REPORTS_RETAINED: ${{ steps.upload-reports.outcome == 'success' }}
+        with:
+          script: |
+            const artifacts = await github.paginate(github.rest.actions.listWorkflowRunArtifacts, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              run_id: context.runId,
+              per_page: 100,
+            });
+            const prefixes = [`${process.env.EVAL_KPIS_ARTIFACT}-`];
+            if (process.env.REPORTS_RETAINED === 'true') {
+              prefixes.push(`${process.env.EVAL_REPORT_ARTIFACT}-`);
+            }
+            for (const artifact of artifacts.filter(a => prefixes.some(prefix => a.name.startsWith(prefix)))) {
+              await github.rest.actions.deleteArtifact({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                artifact_id: artifact.id,
+              });
+            }
+
+      - name: Publish workflow summary
+        if: always()
+        run: |
+          if [ -f consolidated/summary.md ]; then
+            cat consolidated/summary.md >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "## cuVSLAM CI Summary" >> "$GITHUB_STEP_SUMMARY"
+            echo "Summary generation failed. Inspect the job logs." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Check overall result
+        if: always()
+        run: |
+          if [ "${{ needs.check-changes.result }}" != "success" ]; then
+            echo "::error::The build preflight job did not succeed: ${{ needs.check-changes.result }}"
+            exit 1
+          elif [ "${{ needs.check-changes.outputs.should_build }}" = "false" ]; then
+            echo "Nightly skipped: no changes in the last 24 hours."
+          elif [ "${{ needs.build-and-test.result }}" != "success" ]; then
+            echo "::error::One or more build-and-test matrix jobs did not succeed: ${{ needs.build-and-test.result }}"
+            exit 1
+          fi
+
+  publish-release:
+    name: Create draft release
+    runs-on: ubuntu-latest
+    if: >-
+      always() &&
+      needs.check-changes.outputs.is_release == 'true' &&
+      needs.build-and-test.result == 'success' &&
+      needs.nightly-summary.result == 'success'
+    needs: [check-changes, build-and-test, nightly-summary]
+    permissions:
+      actions: read
+      contents: write  # Required by gh release create below.
+    steps:
+      - name: Download release artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts
+
+      - name: Verify release does not already exist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.check-changes.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          existing_release=$(
+            gh api --paginate "repos/${GITHUB_REPOSITORY}/releases?per_page=100" \
+              --jq ".[] | select(.tag_name == \"${TAG}\") | [.id, .draft, .html_url] | @tsv"
+          )
+          if [ -n "$existing_release" ]; then
+            echo "::error::A draft or published release already targets ${TAG}. Delete an obsolete draft explicitly before rebuilding; published releases must not be replaced."
+            echo "$existing_release"
+            exit 1
+          fi
+          if gh api "repos/${GITHUB_REPOSITORY}/git/ref/tags/${TAG}" >/dev/null 2>&1; then
+            echo "::error::Git tag ${TAG} already exists. Refusing to move or replace it."
+            exit 1
+          fi
+
+      - name: Package release assets and notes
+        env:
+          TAG: ${{ needs.check-changes.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          mkdir -p release-assets verification/eval-reports
+          library_count=0
+          wheel_count=0
 
           for dir in artifacts/cuvslam-*; do
             [ -d "$dir" ] || continue
             NAME=$(basename "$dir")
             tar czf "release-assets/${NAME}.tar.gz" -C "$dir" .
+            library_count=$((library_count + 1))
           done
 
           for dir in artifacts/pycuvslam-*; do
             [ -d "$dir" ] || continue
-            for whl in "$dir"/*.whl; do
-              [ -f "$whl" ] || continue
-              cp "$whl" "release-assets/$(basename "$whl")"
+            for wheel in "$dir"/*.whl; do
+              cp "$wheel" release-assets/
+              wheel_count=$((wheel_count + 1))
             done
           done
 
-          # Documentation (Doxygen C++ API + Sphinx Python API) is built once per
-          # nightly; ship it as a tarball asset with a download link.
-          docs_dir="artifacts/docs-html"
-          if [ -d "$docs_dir" ] && find "$docs_dir" -type f | grep -q .; then
-            tar czf "release-assets/docs-html.tar.gz" -C "$docs_dir" .
-            {
-              echo ""
-              echo "## Documentation"
-              echo ""
-              echo "[Download the API documentation (Doxygen C++ + Sphinx Python HTML)](https://github.com/${{ github.repository }}/releases/download/nightly-${DATE}/docs-html.tar.gz)"
-              echo ""
-            } >> release-notes.md
+          if [ "$library_count" -eq 0 ] || [ "$wheel_count" -eq 0 ]; then
+            echo "::error::Release packaging requires at least one C++ library archive and one Python wheel."
+            exit 1
           fi
 
-          echo "=== Release Notes ==="
-          cat release-notes.md
-          echo "=== Assets ==="
-          ls -lh release-assets/
+          if [ -d artifacts/docs-html ]; then
+            tar czf release-assets/docs-html.tar.gz -C artifacts/docs-html .
+          fi
 
-      - name: Create GitHub Release
-        if: steps.check.outputs.skip == 'false'
+          if [ ! -f artifacts/ci-summary/summary.md ] || [ ! -d artifacts/eval-reports ]; then
+            echo "::error::Consolidated CI summary or evaluation reports are missing."
+            exit 1
+          fi
+          cp -a artifacts/ci-summary/. verification/
+          cp -a artifacts/eval-reports/. verification/eval-reports/
+          tar czf "release-assets/cuvslam-evaluation-${TAG}.tar.gz" -C verification .
+
+          cp artifacts/ci-summary/summary.md release-notes.md
+          {
+            echo ""
+            echo "## Permanent evaluation record"
+            echo ""
+            echo "The attached \`cuvslam-evaluation-${TAG}.tar.gz\` contains the KPI data, combined summary, and PDF evaluation reports used to verify this release."
+          } >> release-notes.md
+
+          assets=(release-assets/*)
+          if [ "${#assets[@]}" -eq 0 ]; then
+            echo "::error::No release assets were packaged."
+            exit 1
+          fi
+
+      - name: Create draft GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.check-changes.outputs.release_tag }}
         run: |
-          TAG="nightly-${{ steps.release-notes.outputs.date }}"
-          gh release delete "$TAG" --cleanup-tag --yes 2>/dev/null || true
-          gh release create "$TAG" \
-            --target ${{ github.sha }} \
-            --title "Nightly ${{ steps.release-notes.outputs.date }}" \
-            --notes-file release-notes.md \
-            --prerelease \
-            release-assets/*
+          set -euo pipefail
+          shopt -s nullglob
+          assets=(release-assets/*)
+          draft_url=$(
+            gh release create "$TAG" \
+              --target "$GITHUB_SHA" \
+              --title "cuVSLAM ${TAG}" \
+              --notes-file release-notes.md \
+              --draft \
+              "${assets[@]}"
+          )
+          {
+            echo "## Draft release created"
+            echo ""
+            echo "[$TAG]($draft_url)"
+            echo ""
+            echo "To rebuild this release candidate, delete the draft explicitly and dispatch the updated release branch again."
+          } >> "$GITHUB_STEP_SUMMARY"

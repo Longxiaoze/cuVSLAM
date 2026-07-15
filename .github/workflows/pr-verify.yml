@@ -75,6 +75,34 @@ jobs:
         with:
           lfs: false
 
+      - name: Configure Ubuntu Ports mirror
+        if: runner.arch == 'ARM64'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          dockerfile = Path("scripts/Dockerfile")
+          marker = "ARG DEBIAN_FRONTEND=noninteractive\n"
+          mirror_setup = r"""ARG DEBIAN_FRONTEND=noninteractive
+
+          # NVIDIA ARM runner networks cannot reliably reach ports.ubuntu.com.
+          RUN set -eux; \
+              find /etc/apt -type f \( -name '*.list' -o -name '*.sources' \) \
+                  -exec sed -Ei 's#https?://ports\.ubuntu\.com/ubuntu-ports#http://mirrors.ocf.berkeley.edu/ubuntu-ports#g' {} +; \
+              printf '%s\n' \
+                  'Acquire::IndexTargets::deb::DEP-11::DefaultEnabled "false";' \
+                  'Acquire::IndexTargets::deb::DEP-11-icons-small::DefaultEnabled "false";' \
+                  'Acquire::IndexTargets::deb::DEP-11-icons::DefaultEnabled "false";' \
+                  'Acquire::IndexTargets::deb::DEP-11-icons-hidpi::DefaultEnabled "false";' \
+                  > /etc/apt/apt.conf.d/99-nvidia-ubuntu-ports-mirror
+          """
+
+          content = dockerfile.read_text()
+          if marker not in content:
+              raise SystemExit(f"{marker.strip()} not found in {dockerfile}")
+          dockerfile.write_text(content.replace(marker, mirror_setup, 1))
+          PY
+
       - name: Pull LFS test data
         run: git lfs pull --include="test_data/"
 
@@ -212,6 +240,34 @@ jobs:
         with:
           lfs: false
 
+      - name: Configure Ubuntu Ports mirror
+        if: runner.arch == 'ARM64'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          dockerfile = Path("scripts/Dockerfile")
+          marker = "ARG DEBIAN_FRONTEND=noninteractive\n"
+          mirror_setup = r"""ARG DEBIAN_FRONTEND=noninteractive
+
+          # NVIDIA ARM runner networks cannot reliably reach ports.ubuntu.com.
+          RUN set -eux; \
+              find /etc/apt -type f \( -name '*.list' -o -name '*.sources' \) \
+                  -exec sed -Ei 's#https?://ports\.ubuntu\.com/ubuntu-ports#http://mirrors.ocf.berkeley.edu/ubuntu-ports#g' {} +; \
+              printf '%s\n' \
+                  'Acquire::IndexTargets::deb::DEP-11::DefaultEnabled "false";' \
+                  'Acquire::IndexTargets::deb::DEP-11-icons-small::DefaultEnabled "false";' \
+                  'Acquire::IndexTargets::deb::DEP-11-icons::DefaultEnabled "false";' \
+                  'Acquire::IndexTargets::deb::DEP-11-icons-hidpi::DefaultEnabled "false";' \
+                  > /etc/apt/apt.conf.d/99-nvidia-ubuntu-ports-mirror
+          """
+
+          content = dockerfile.read_text()
+          if marker not in content:
+              raise SystemExit(f"{marker.strip()} not found in {dockerfile}")
+          dockerfile.write_text(content.replace(marker, mirror_setup, 1))
+          PY
+
       - name: Pull LFS test data
         run: git lfs pull --include="test_data/"
 
@@ -259,6 +315,34 @@ jobs:
       - uses: actions/checkout@v5
         with:
           lfs: false
+
+      - name: Configure Ubuntu Ports mirror
+        if: runner.arch == 'ARM64'
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          dockerfile = Path("scripts/Dockerfile")
+          marker = "ARG DEBIAN_FRONTEND=noninteractive\n"
+          mirror_setup = r"""ARG DEBIAN_FRONTEND=noninteractive
+
+          # NVIDIA ARM runner networks cannot reliably reach ports.ubuntu.com.
+          RUN set -eux; \
+              find /etc/apt -type f \( -name '*.list' -o -name '*.sources' \) \
+                  -exec sed -Ei 's#https?://ports\.ubuntu\.com/ubuntu-ports#http://mirrors.ocf.berkeley.edu/ubuntu-ports#g' {} +; \
+              printf '%s\n' \
+                  'Acquire::IndexTargets::deb::DEP-11::DefaultEnabled "false";' \
+                  'Acquire::IndexTargets::deb::DEP-11-icons-small::DefaultEnabled "false";' \
+                  'Acquire::IndexTargets::deb::DEP-11-icons::DefaultEnabled "false";' \
+                  'Acquire::IndexTargets::deb::DEP-11-icons-hidpi::DefaultEnabled "false";' \
+                  > /etc/apt/apt.conf.d/99-nvidia-ubuntu-ports-mirror
+          """
+
+          content = dockerfile.read_text()
+          if marker not in content:
+              raise SystemExit(f"{marker.strip()} not found in {dockerfile}")
+          dockerfile.write_text(content.replace(marker, mirror_setup, 1))
+          PY
 
       - name: Pull LFS test data
         run: git lfs pull --include="test_data/"
