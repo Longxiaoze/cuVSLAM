@@ -98,3 +98,25 @@ python3 run_rgbd.py
 You should see the following rerun visualization, displaying the camera trajectory along with the input RGB and depth images:
 
 ![Visualization Example](../assets/tutorial_realsense_rgbd.gif)
+
+## Running Multisensor Odometry
+
+Multisensor odometry uses the cuNLS-based `OdometryMode.Multisensor` pipeline. With a RealSense D455, the simplest
+live setup is RGB-D + IMU: the RGB stream provides visual features, the aligned depth stream provides metric depth, and
+the integrated IMU is registered through the same serialized tracker call path as the stereo inertial example.
+
+To run RGB-D + IMU multisensor odometry, execute:
+
+```bash
+python3 run_multisensor.py
+```
+
+For a stereo + IMU multisensor smoke test using the same IR streams as the stereo inertial example, set
+`USE_MULTISENSOR_MODE = True` in `run_vio.py` and run:
+
+```bash
+python3 run_vio.py
+```
+
+> **Note:** Multisensor mode requires a cuNLS-enabled PyCuVSLAM build. The default source build enables cuNLS; if
+> cuVSLAM was configured with `-DUSE_CUNLS=OFF`, these multisensor examples are unavailable.
